@@ -16,7 +16,7 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 - Per-profile persisted wishlists.
 - Host dashboard, reservations, and listing creation, editing, and deletion. Photos are supplied through URLs.
 - Four selectable demo profiles, including three hosts with independently owned homes.
-- Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, and an illustrative clickable map.
+- Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, and an interactive map with price pins and home previews.
 - Seed data: 20 homes, six users, 60 reviews, four upcoming bookings, and a saved home.
 
 ## Quick start
@@ -221,7 +221,7 @@ Manual browser checks include date selection, checkout, persisted trips, host fo
 - Real payments, messaging, identity verification, experiences, and services are clearly marked demos or coming-soon surfaces.
 - No card details are collected. Cancellation is a full mock refund before check-in.
 - Photos use public Unsplash image URLs and require network access. Custom photo uploads are represented by URL entry, as permitted by the assignment.
-- The map is explicitly illustrative, with clickable home price markers; positions are not real geolocation.
+- Maps use Leaflet and OpenStreetMap tiles, with approximate seeded town coordinates. Explore shows the current results page, groups nearby price pins, supports country selection, and opens a photo preview before navigating to a home. Detail pages show the surrounding area. Host-created homes without coordinates show their location text instead of an invented pin. Tile loading needs internet access; the listing list remains usable if it fails. No API key, account, paid plan, or user geolocation is needed. Visible attribution is retained and tiles use normal browser caching; see the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
 - Reviews and Superhost status are seeded, and ratings are aggregated from seeded reviews. Guest review submission is not implemented (optional bonus).
 - Responsive layout supports mobile, tablet, and desktop. Dates are property-style calendar dates rather than timezone-adjusted timestamps.
 - The visual implementation is written from scratch, inspired by Airbnb's layout patterns. No Airbnb source code or existing clone repository was copied.

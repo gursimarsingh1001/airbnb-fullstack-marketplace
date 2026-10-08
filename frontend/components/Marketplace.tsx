@@ -42,6 +42,9 @@ import {
 } from "./UI";
 import Detail from "./Detail";
 import Host from "./Host";
+import dynamic from "next/dynamic";
+
+const StayMap = dynamic(() => import("./StayMap"), { ssr: false, loading: () => <Loading /> });
 
 const guest: User = {
   id: 1,
@@ -1212,34 +1215,12 @@ export default function Marketplace() {
       )}
       {mapView && (
         <Modal
-          title="A world of possibilities"
+          title="Explore the map"
           wide
+          className="map-modal"
           onClose={() => setMapView(false)}
         >
-          <div className="browse-map">
-            <div className="map-road r1" />
-            <div className="map-road r2" />
-            <div className="map-road r3" />
-            <div className="map-lake" />
-            {homes.slice(0, 10).map((h, i) => (
-              <button
-                key={h.id}
-                className="map-price"
-                style={{
-                  left: 12 + (i % 4) * 22 + "%",
-                  top: 15 + Math.floor(i / 4) * 25 + "%",
-                }}
-                onClick={() => {
-                  setMapView(false);
-                  navigate("listing/" + h.id);
-                }}
-              >
-                <strong>{money(h.price)}</strong>
-                <span>{h.location.split(",")[0]}</span>
-              </button>
-            ))}
-            <small>Illustrative map · Select a price to explore a home</small>
-          </div>
+          <StayMap homes={homes} onOpen={(id) => { setMapView(false); navigate("listing/" + id); }} />
         </Modal>
       )}
       {toast && (

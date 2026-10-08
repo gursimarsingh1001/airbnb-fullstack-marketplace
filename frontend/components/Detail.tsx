@@ -17,6 +17,9 @@ import {
 } from "lucide-react";
 import { api, ApiError, Listing, Quote, money, prettyDate } from "@/lib/api";
 import { Calendar, Modal, SafeImage, amenityIcons } from "./UI";
+import dynamic from "next/dynamic";
+
+const StayMap = dynamic(() => import("./StayMap"), { ssr: false, loading: () => <div className="map-unavailable">Loading map…</div> });
 
 export default function Detail({
   id,
@@ -439,17 +442,7 @@ export default function Detail({
         <p>
           {h.location}, {h.country}
         </p>
-        <div className="location-illustration">
-          <div className="map-road r1" />
-          <div className="map-road r2" />
-          <div className="map-road r3" />
-          <div className="map-lake" />
-          <span className="map-home">
-            <MapPin size={26} />
-          </span>
-          <span className="map-label">{h.location.split(",")[0]}</span>
-          <small>Illustrative map · Demo locations only</small>
-        </div>
+        <StayMap homes={[h]} compact />
       </section>
       {dates && (
         <Modal title="Choose your dates" wide onClose={() => setDates(false)}>

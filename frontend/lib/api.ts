@@ -20,6 +20,8 @@ export type Listing = {
   description: string;
   location: string;
   country: string;
+  latitude: number;
+  longitude: number;
   category: string;
   property_type: string;
   price: number;
