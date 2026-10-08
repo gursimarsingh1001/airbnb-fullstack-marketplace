@@ -1,19 +1,26 @@
 """SQLite connection and schema. Money is stored as integer INR (no floating point)."""
+
 import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = os.getenv('DATABASE_PATH', str(Path(__file__).parent / 'airbnb.db'))
+DB_PATH = os.getenv("DATABASE_PATH", str(Path(__file__).parent / "airbnb.db"))
+
 
 def connect():
+    if os.getenv("DATABASE_BLOB_ENABLED") == "1":
+        from .blob_database import connect_snapshot
+
+        return connect_snapshot()
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=15, check_same_thread=False)
     db.row_factory = sqlite3.Row
-    db.execute('PRAGMA foreign_keys = ON')
-    db.execute('PRAGMA journal_mode = WAL')
+    db.execute("PRAGMA foreign_keys = ON")
+    db.execute("PRAGMA journal_mode = WAL")
     return db
 
-SCHEMA = '''
+
+SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('guest','host')),
  avatar TEXT NOT NULL, joined_year INTEGER NOT NULL
@@ -58,10 +65,20 @@ CREATE TABLE IF NOT EXISTS wishlists (
  user_id INTEGER NOT NULL REFERENCES users(id), listing_id INTEGER NOT NULL REFERENCES listings(id),
  PRIMARY KEY(user_id, listing_id)
 );
-'''
+"""
+
 
 def initialize():
-    with connect() as db:
-        db.executescript(SCHEMA)
-        from .seed import seed
-        seed(db)
+    from .blob_database import SnapshotConflict
+
+    try:
+        with connect() as db:
+            db.executescript(SCHEMA)
+            from .seed import seed
+
+            seed(db)
+    except SnapshotConflict:
+        # Another cold-start instance seeded the same private Blob first.
+        # Its complete snapshot is authoritative; never replace it with ours.
+        if os.getenv("DATABASE_BLOB_ENABLED") != "1":
+            raise

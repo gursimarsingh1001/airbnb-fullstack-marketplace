@@ -1,5 +1,11 @@
 # Airbnb Marketplace
 
+**Live demo:** https://airbnb-fullstack-marketplace.vercel.app
+
+**Public source:** https://github.com/gursimarsingh1001/airbnb-fullstack-marketplace
+
+![Live marketplace preview](docs/live-demo.jpg)
+
 An original full-stack Airbnb-inspired assignment implementation, built with **Next.js 16 + TypeScript**, **FastAPI**, and **SQLite**. This is an independent educational project, not an official Airbnb product. All homes, hosts, reviews, and payments are fictional; photography is illustrative.
 
 ## Features
@@ -63,18 +69,24 @@ Open **http://localhost:8000**. The named `airbnb-data` volume preserves SQLite 
 
 ## Deployment
 
-The included `Dockerfile` packages the Next.js production export with FastAPI. `render.yaml` defines a Render web service with a **1 GB persistent disk** mounted at `/data`. Import the public repository as a Render Blueprint, review the plan and its charges, and deploy. The service exposes its own public `onrender.com` URL and `/api/health` health check.
+The hosted demo uses **Vercel Hobby (free)** for the static Next.js frontend and Python FastAPI function, with a **private Vercel Blob store** holding the SQLite database. No paid plan, trial, or recurring payment is used. Free quotas are finite: service can pause when limits are reached instead of billing overages.
 
-**A public hosted URL is not included until an authenticated hosting account is available and deployment succeeds.** Source code and local preview alone are not a hosted demo.
+`vercel.json` builds `frontend/` and exposes `api/index.py`. Connect a private Blob store to the project with a server-only `BLOB_READ_WRITE_TOKEN`, and set `DATABASE_BLOB_ENABLED=1` in production. Then run `vercel deploy --prod`.
 
-Render persistent disks require a paid web service. Consult [Render disk documentation](https://render.com/docs/disks) and [pricing](https://render.com/pricing) before approving a deployment. The application must run as **one service instance with one persistent disk**, not as horizontally scaled independent SQLite replicas.
+### How SQLite persists on free serverless hosting
 
-Vercel or Netlify can host the frontend export separately, but the Python backend still needs durable disk storage. Set `NEXT_PUBLIC_API_URL` before building the frontend, and set `CORS_ORIGINS` on the backend to the exact frontend origin. Do not deploy a writable SQLite file inside an ephemeral serverless function and expect reservations to persist.
+Each API request reads the latest private database snapshot directly from storage, opens a separate temporary SQLite file, and runs the existing SQL queries and transactions. Mutations commit locally, then publish the complete snapshot using an **ETag conditional write**. If another request published first, the stale write fails with HTTP 409 and the user retries against fresh data. Successful responses are returned only after durable upload succeeds. Reads do not upload snapshots. Credentials and database files are never exposed to the frontend.
+
+This design preserves real SQLite, durable data, and safe concurrent writes for a small assignment dataset. It trades additional network latency and whole-file transfers for zero-cost hosting. It is not intended for a high-traffic marketplace: the file is capped at 10 MB, and free Blob operation limits apply. Use a conventional persistent volume or a managed database when scaling beyond a demo.
+
+The included Docker configuration remains available for local or self-hosted use with a named persistent volume. **No paid Render deployment is configured.**
 
 ### Configuration
 
 | Variable | Location | Default / purpose |
 | --- | --- | --- |
+| `DATABASE_BLOB_ENABLED` | Backend | `1` on Vercel; otherwise use a local SQLite file |
+| `BLOB_READ_WRITE_TOKEN` | Backend only | Private Blob credential injected by the storage connection |
 | `DATABASE_PATH` | Backend | `backend/airbnb.db`; production `/data/airbnb.db` |
 | `CORS_ORIGINS` | Backend | `http://localhost:3001,http://127.0.0.1:3001`; comma-separated allowed origins |
 | `PORT` | Docker | `8000`; hosting platform may override |
@@ -94,6 +106,7 @@ frontend/
 backend/
   main.py               FastAPI routes, validation, pricing, authorization
   database.py           SQLite connection, schema, indexes, initialization
+  blob_database.py      Private durable snapshots and optimistic concurrency
   seed.py               Original fictional demo dataset
   tests/test_api.py     Integration and concurrent booking tests
 ```
@@ -127,7 +140,7 @@ erDiagram
 | `reviews` | Listing/user FKs, rating constrained to 1–5, comment, date |
 | `wishlists` | Composite primary key `(user_id, listing_id)` |
 
-Foreign keys are enabled on every connection. Indexes cover listing ownership, user bookings, and availability lookups. WAL mode and a 15-second busy timeout support concurrent readers and serialized writes.
+Foreign keys are enabled on every connection. Indexes cover listing ownership, user bookings, and availability lookups. Local WAL mode and a 15-second busy timeout support concurrent readers and serialized writes. The cloud snapshot adapter uses DELETE journal mode so the uploaded file contains the entire committed state; ETag checks serialize publication across instances.
 
 ### Booking invariants
 
@@ -177,7 +190,7 @@ npm run typecheck
 npm run build
 ```
 
-The 12 backend tests cover search and pagination, exact server quotes, DB persistence, overlapping intervals, adjacent stays, concurrent double booking, invalid input, host ownership, CRUD, cancellation, per-user/idempotent wishlists, and transaction rollback. GitHub Actions runs tests and the production build on pushes and pull requests.
+The 14 backend tests cover search and pagination, exact server quotes, DB persistence, overlapping intervals, adjacent stays, concurrent double booking, invalid input, host ownership, CRUD, cancellation, per-user/idempotent wishlists, transaction rollback, cloud snapshot durability, and stale-writer rejection. GitHub Actions runs tests and the production build on pushes and pull requests.
 
 Manual browser checks include date selection, checkout, persisted trips, host forms, filters, empty states, and mobile/desktop layouts. See [verification notes](docs/VERIFICATION.md).
 

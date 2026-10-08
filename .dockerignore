@@ -1,4 +1,5 @@
 .git
+.devtools
 **/node_modules
 **/.next
 **/out
