@@ -94,6 +94,10 @@ export default function Marketplace() {
     [filters, setFilters] = useState<Filters>(defaultFilters),
     [draftFilters, setDraftFilters] = useState<Filters>(defaultFilters),
     [page, setPage] = useState(1),
+    [sort, setSort] = useState("recommended"),
+    [mapHomes, setMapHomes] = useState<Listing[]>([]),
+    [mapLoading, setMapLoading] = useState(false),
+    [mapError, setMapError] = useState(""),
     [homes, setHomes] = useState<Listing[]>([]),
     [total, setTotal] = useState(0),
     [pages, setPages] = useState(1),
@@ -154,6 +158,7 @@ export default function Marketplace() {
           });
         }
         if (Number.isInteger(stored.page) && stored.page > 0) setPage(stored.page);
+        if (["recommended", "price_low", "price_high", "rating"].includes(stored.sort)) setSort(stored.sort);
       }
     } catch { /* Browsing still works when session storage is unavailable. */ }
     const change = () => {
@@ -178,8 +183,8 @@ export default function Marketplace() {
   }, [notify]);
   useEffect(() => {
     if (!ready) return;
-    try { sessionStorage.setItem(searchStorageKey, JSON.stringify({ search, category, filters, page })); } catch { /* Search works without browser storage. */ }
-  }, [ready, search, category, filters, page]);
+    try { sessionStorage.setItem(searchStorageKey, JSON.stringify({ search, category, filters, page, sort })); } catch { /* Search works without browser storage. */ }
+  }, [ready, search, category, filters, page, sort]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 4200);
@@ -200,6 +205,7 @@ export default function Marketplace() {
       amenities: filters.amenities.join(","),
       page: String(page),
       limit: "15",
+      sort,
     });
     if (search.start && search.end) {
       params.set("check_in", search.start);
@@ -226,7 +232,29 @@ export default function Marketplace() {
     return () => {
       active = false;
     };
-  }, [ready, user.id, search, category, filters, page, refresh]);
+  }, [ready, user.id, search, category, filters, page, refresh, sort]);
+  useEffect(() => {
+    if (!mapView) return;
+    const controller = new AbortController();
+    setMapLoading(true); setMapError(""); setMapHomes([]);
+    const params = new URLSearchParams({ q: search.q, category, guests: String(search.guests),
+      min_price: String(filters.min), max_price: String(filters.max), property_type: filters.type,
+      amenities: filters.amenities.join(","), limit: "50", sort });
+    if (search.start && search.end) { params.set("check_in", search.start); params.set("check_out", search.end); }
+    async function loadMap() {
+      const collected: Listing[] = [];
+      let count = 1;
+      for (let p = 1; p <= count; p++) {
+        params.set("page", String(p));
+        const result = await api<{ items: Listing[]; pages: number }>("/listings?" + params, user.id, "GET", undefined, { signal: controller.signal });
+        count = result.pages; collected.push(...result.items);
+      }
+      if (!controller.signal.aborted) setMapHomes(collected);
+    }
+    void loadMap().catch((e) => { if (!controller.signal.aborted) setMapError(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setMapLoading(false); });
+    return () => controller.abort();
+  }, [mapView, search, category, filters, sort, user.id, refresh]);
   useEffect(() => {
     if (!ready) return;
     let active = true;
@@ -612,6 +640,24 @@ export default function Marketplace() {
             </button>
           </div>
           <main id="main-content" tabIndex={-1} className="explore-shell">
+            {!search.q && !category && !filterCount && !search.start && page === 1 && (
+              <section className="destination-discovery" aria-label="Explore destinations">
+                <div className="discovery-title"><h2>Where will your next story begin?</h2><span>Coast, mountains, or somewhere in between</span></div>
+                <div className="destination-cards">
+                  {[
+                    ["Goa", "Salt air & slow mornings", "photo-1499793983690-e29da59ef1c2"],
+                    ["Himachal", "A little closer to the clouds", "photo-1449158743715-0a90ebb6d2d8"],
+                    ["Kerala", "Green views, everywhere", "photo-1470770841072-f978cf4d019e"],
+                    ["Bali", "Your island state of mind", "photo-1613977257363-707ba9348227"],
+                  ].map(([destination, caption, photo]) => (
+                    <button key={destination} className="destination-card" onClick={() => { setQ(destination); setSearch({ ...search, q: destination }); setPage(1); }}>
+                      <SafeImage src={`https://images.unsplash.com/${photo}?auto=format&fit=crop&w=600&q=80`} alt="" />
+                      <span><strong>{destination}</strong><small>{caption}</small></span><ArrowUpRight size={22} />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
             <div className="explore-heading">
               <div>
                 <div className="eyebrow">A LITTLE CHANGE OF SCENERY</div>
@@ -638,6 +684,14 @@ export default function Marketplace() {
                     ? `${prettyDate(search.start)} – ${prettyDate(search.end)}`
                     : "A new favourite is waiting"}
                 </span>
+                <label className="sort-control">Sort by
+                  <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}>
+                    <option value="recommended">Recommended</option>
+                    <option value="price_low">Price: low to high</option>
+                    <option value="price_high">Price: high to low</option>
+                    <option value="rating">Highest rated</option>
+                  </select>
+                </label>
               </div>
             </div>
             {search.q || search.start || filterCount || category || search.guests > 1 ? (
@@ -731,6 +785,10 @@ export default function Marketplace() {
                 }
               />
             )}
+            <section className="hosting-invitation">
+              <div><p className="eyebrow">A SPACE WORTH SHARING</p><h2>Your place could be someone’s favourite getaway.</h2><p>Create a listing, welcome guests, and manage your reservations in one place.</p><button className="dark-button" onClick={host}>Explore hosting <ArrowUpRight size={17} /></button></div>
+              <SafeImage src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=80" alt="A welcoming living room with comfortable seating" />
+            </section>
           </main>
           {!loading && homes.length > 0 && (
             <button className="map-toggle" onClick={() => setMapView(!mapView)}>
@@ -1137,8 +1195,8 @@ export default function Marketplace() {
         >
           <div className="modal-body">
             <p className="muted">
-              Choose a demo profile. Each has its own trips, wishlists, and
-              hosted homes.
+              One marketplace, two ways to use it. Guests book and save stays; hosts
+              manage their homes and reservations. Choose a demo profile below—no password needed.
             </p>
             <div className="profile-options">
               {users
@@ -1310,7 +1368,7 @@ export default function Marketplace() {
           className="map-modal"
           onClose={() => setMapView(false)}
         >
-          <StayMap homes={homes} onOpen={(id) => { setMapView(false); navigate("listing/" + id); }} />
+          {mapLoading ? <Loading /> : mapError ? <Empty title="The map couldn’t load" text={mapError} action={<button className="dark-button" onClick={() => setRefresh((n) => n + 1)}>Try again</button>} /> : <StayMap homes={mapHomes} onOpen={(id) => { setMapView(false); navigate("listing/" + id); }} />}
         </Modal>
       )}
       {toast && (

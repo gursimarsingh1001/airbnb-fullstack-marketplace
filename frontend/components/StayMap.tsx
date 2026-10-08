@@ -125,7 +125,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
 
   return <div className={`stay-map ${compact ? "stay-map-compact" : ""}`}>
     {!compact && <div className="stay-map-toolbar">
-      <div><strong>Find your place on the map</strong><span>{homes.length} homes on this results page · nightly prices</span></div>
+      <div><strong>Find your place on the map</strong><span>{homes.length} matching homes across all pages · nightly prices</span></div>
       <label className="map-region"><MapPin size={16} /><span className="sr-only">Map region</span>
         <select aria-label="Map region" value={region} onChange={(event) => { setCountry(event.target.value); setSelectedId(null); setStatus("loading"); }}>{countries.map((name) => <option key={name}>{name}</option>)}</select>
       </label>

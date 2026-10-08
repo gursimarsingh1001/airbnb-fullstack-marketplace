@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 import os
 import sqlite3
 import hashlib
@@ -156,6 +156,7 @@ def listings(
     check_out: date | None = None,
     page: int = Query(1, ge=1),
     limit: int = Query(15, ge=1, le=50),
+    sort: Literal['recommended', 'price_low', 'price_high', 'rating'] = 'recommended',
 ):
     if min_price > max_price:
         raise HTTPException(422, "Minimum price cannot exceed maximum price.")
@@ -188,8 +189,10 @@ def listings(
     total = db.execute("SELECT COUNT(*) FROM listings WHERE " + where, args).fetchone()[
         0
     ]
+    order = {'recommended': 'id', 'price_low': 'price ASC, id', 'price_high': 'price DESC, id',
+             'rating': '(SELECT AVG(rating) FROM reviews WHERE listing_id=listings.id) DESC, id'}[sort]
     rows = db.execute(
-        "SELECT * FROM listings WHERE " + where + " ORDER BY id LIMIT ? OFFSET ?",
+        "SELECT * FROM listings WHERE " + where + " ORDER BY " + order + " LIMIT ? OFFSET ?",
         args + [limit, (page - 1) * limit],
     ).fetchall()
     return {

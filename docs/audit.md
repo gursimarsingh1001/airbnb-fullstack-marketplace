@@ -77,3 +77,13 @@ The production static export was served with FastAPI at `http://127.0.0.1:8002/`
 - External illustrative image availability and the free hosting quota remain outside source-level guarantees. Serverless whole-file snapshot storage is for the small assignment dataset only.
 
 See [REQUIREMENTS.md](REQUIREMENTS.md) for feature-by-feature status and [README.md](../README.md) for setup, schema, pricing, API, deployment and demonstration instructions.
+
+## Catalogue and discovery expansion (9 October 2026)
+
+- Expanded to 44 fictional stays and 84 seed reviews. The additive `demo_content_versions` marker prevents repeat insertion; existing host edits, removals and reservations are preserved. New homes include photos, amenities, prices, capacity and approximate coordinates.
+- Added photo destination shortcuts and a hosting invitation. Added server-side recommended/price/rating sorting with stable ID tie-breakers, applied before pagination and retained in search state.
+- Map fetches every matching result page with cancellation/error handling. Local browser displayed 44 matches and 40 Indian homes, including stays outside grid page one.
+- Local browser verified ascending prices, map results, and layouts at 390 and 768 pixels without horizontal document overflow. Desktop imagery inspected. Fixed a narrow-layout rule that would hide the new sort control.
+- Real deployed cloud upload: POST `/api/host/photos` returned 201, image proxy returned 200, and downloaded bytes matched the original 233,700-byte demo JPEG exactly. One small QA image remains in the existing free Blob store; no listing or booking was modified. Earlier unverified-upload notes are historical.
+- Checks: 70 backend tests, 8 frontend tests, lint, TypeScript and production build passed. New regressions cover sort/filter/pagination ordering and safe repeated catalogue upgrades.
+- Guest and host remain in one application using explicitly labelled demo profiles. Real password authentication is not required by the assignment and is not implemented.

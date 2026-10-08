@@ -33,7 +33,7 @@ Audit date: **9 October 2026**. “Implemented” describes source behavior; the
 | Interactive map with listing pins | Implemented and verified | Leaflet map shows approximate listing pins and home previews; production drag/zoom checks after the map-bounds fix showed tiles remain in view |
 | Review after a completed stay | Implemented and verified | Guest submitted the seeded completed-trip review through Trips in the local browser; UI changed to “Review shared”; API tests verify ownership, one-review rule, rating aggregation, and trigger enforcement |
 | Superhost badges and rating aggregation | Implemented and verified | Seeded Superhost labels display on cards/details; listing responses aggregate review average/count, and the review regression test confirms the aggregate changes after a new review |
-| Image upload to cloud storage | Implemented; integration partially verified | Host photo upload validates image bytes/types and stores privately through Vercel Blob; API/storage tests mock the Blob service and verify upload/fetch paths. A real upload was not sent to the shared production store |
+| Image upload to cloud storage | Implemented; live API integration verified | Host photo upload validates image bytes/types and stores privately through Vercel Blob; API/storage tests mock the Blob service and verify upload/fetch paths. On 9 October a real JPEG upload returned 201 and its image proxy returned identical bytes with 200; see the catalogue audit follow-up |
 | Persistent dark mode | Implemented and verified | Toggled dark mode in the local browser, saw the dark palette, then refreshed and confirmed the preference remained active |
 | Responsive mobile/tablet/desktop layouts | Implemented and partially verified | Prior browser audit inspected 390 px, 768 px, and wide desktop views; this bonus pass confirmed the dark palette on the local explore page |
 | Keyboard labels, visible focus, modal focus | Partially verified | Modal Escape/focus trap keyboard test performed; labels and buttons reviewed in accessibility tree; no screen reader or automated WCAG/contrast audit |
@@ -45,3 +45,5 @@ Audit date: **9 October 2026**. “Implemented” describes source behavior; the
 ### Permitted or optional exclusions
 
 Real payments, messaging, identity verification, live pricing pins, and social authentication remain mocked or unimplemented as permitted. The map uses approximate seeded coordinates and OpenStreetMap tiles; cloud photo storage uses the connected Vercel Blob quota.
+
+Current follow-up: 44 homes, all-results map, destination shortcuts, hosting section and server-side sorting. 70 backend and 8 frontend tests passed. See the latest section of `audit.md`.

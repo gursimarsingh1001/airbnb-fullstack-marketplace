@@ -582,6 +582,44 @@ small,
   margin: auto;
   min-height: 70vh;
 }
+.destination-discovery { margin-bottom: 34px; }
+.discovery-title { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.discovery-title h2 { font-size:21px; letter-spacing:-.5px; }
+.discovery-title > span { color:var(--muted, #717171); font-size:13px; }
+.destination-cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.destination-card { position:relative; height:170px; overflow:hidden; border-radius:16px; border:0; padding:0; text-align:left; background:#333; color:white; }
+.destination-card img { width:100%; height:100%; object-fit:cover; transition:transform .25s; }
+.destination-card:hover img { transform:scale(1.04); }
+.destination-card::after { content:""; position:absolute; inset:0; background:linear-gradient(transparent,rgba(0,0,0,.78)); pointer-events:none; }
+.destination-card > span { position:absolute; left:18px; right:40px; bottom:18px; z-index:1; }
+.destination-card strong { display:block; font-size:23px; }
+.destination-card small { display:block; font-size:12px; margin-top:5px; }
+.destination-card > svg { position:absolute; right:16px; bottom:23px; z-index:1; }
+.sort-control { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:12px; font-size:12px; }
+.sort-control select { border:1px solid var(--line,#ddd); padding:9px 12px; border-radius:10px; background:var(--paper); color:inherit; max-width:180px; }
+.hosting-invitation { display:grid; grid-template-columns:1fr 1fr; margin:20px 0 16px; border:1px solid var(--line,#ddd); border-radius:22px; overflow:hidden; background:var(--paper); }
+.hosting-invitation > div { padding:36px; align-self:center; }
+.hosting-invitation h2 { font-size:29px; line-height:1.2; max-width:450px; margin:12px 0; }
+.hosting-invitation p:not(.eyebrow) { line-height:1.7; color:var(--muted,#717171); margin-bottom:22px; max-width:450px; }
+.hosting-invitation > img { width:100%; height:300px; object-fit:cover; }
+.hosting-invitation button { display:inline-flex; align-items:center; gap:10px; }
+@media(max-width:800px) {
+  .destination-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .destination-card { height:145px; }
+  .discovery-title > span { display:none; }
+  .hosting-invitation > div { padding:24px; }
+  .hosting-invitation h2 { font-size:23px; }
+}
+@media(max-width:520px) {
+  .discovery-title h2 { font-size:19px; }
+  .destination-card strong { font-size:20px; }
+  .destination-card small { font-size:11px; }
+  .destination-card > span { left:12px; bottom:12px; right:24px; }
+  .destination-card > svg { display:none; }
+  .hosting-invitation { grid-template-columns:1fr; }
+  .hosting-invitation > img { height:190px; }
+  .sort-control { justify-content:flex-start; }
+}
 .explore-heading {
   display: flex;
   justify-content: space-between;
@@ -2095,7 +2133,16 @@ td p {
     gap: 12px;
   }
   .results-note {
-    display: none;
+    display: block;
+    text-align: left;
+    margin-top: 14px;
+  }
+  .explore-heading {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .sort-control {
+    justify-content: flex-start;
   }
 }
 @media (max-width: 900px) {

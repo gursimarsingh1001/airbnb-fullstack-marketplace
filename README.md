@@ -17,7 +17,7 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 - Host dashboard, reservations, and listing creation, editing, and deletion. Photos can be supplied through HTTPS URLs or uploaded as JPEG, PNG, or WebP to the connected private Vercel Blob store (3 MB per image).
 - Four selectable demo profiles, including three hosts with independently owned homes.
 - Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, persistent dark mode, and an interactive map with price pins and home previews.
-- Seed data: 20 homes, six users, 60 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
+- Seed data: 44 homes, six users, 84 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
 
 ## Quick start
 
@@ -35,7 +35,7 @@ pip install -r backend/requirements.txt
 python -m uvicorn backend.main:app --reload --port 8001
 ```
 
-SQLite tables and sample data are created automatically on first start. Existing databases are never reseeded or cleared. The default file is `backend/airbnb.db`.
+SQLite tables and sample data are created automatically on first start. Existing data is never cleared. A versioned additive catalogue upgrade adds 24 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
 
 ### 2. Frontend (another terminal)
 
@@ -111,7 +111,7 @@ backend/
   tests/test_api.py     Integration and concurrent booking tests
 ```
 
-The Next.js App Router builds a static frontend shell. Client-side hash routes (`#explore`, `#listing/4`, `#trips`, `#wishlists`, `#host`) preserve browser back/forward and shareable home URLs while allowing a single FastAPI deployment. The browser talks directly to the Python API; **all business data resides in SQLite**. Local storage contains only the selected demo profile ID.
+The Next.js App Router builds a static frontend shell. Client-side hash routes (`#explore`, `#listing/4`, `#trips`, `#wishlists`, `#host`) preserve browser back/forward and shareable home URLs while allowing a single FastAPI deployment. The browser talks directly to the Python API; **all business data resides in SQLite**. Local storage contains the selected demo profile ID and theme; session storage retains search, filters, sort and pagination.
 
 ## Database schema
 
@@ -175,7 +175,7 @@ Interactive OpenAPI reference is available at `/docs` and schema at `/openapi.js
 | POST | `/api/host/photos` | Upload a validated image to the connected private Blob store (host profile required) |
 | GET | `/api/photos/{key}` | Serve an uploaded image through the API without exposing the Blob token |
 
-Search parameters: `q`, `category`, `property_type`, `min_price`, `max_price`, `guests`, `amenities` (comma separated), `check_in`, `check_out`, `page`, `limit`.
+Search parameters: `q`, `category`, `property_type`, `min_price`, `max_price`, `guests`, `amenities` (comma separated), `check_in`, `check_out`, `page`, `limit`, `sort` (`recommended`, `price_low`, `price_high`, `rating`).
 
 Quote request (`POST /api/quote`):
 
@@ -224,8 +224,8 @@ Manual browser checks include date selection, checkout, persisted trips, host fo
 
 - Real payments, messaging, identity verification, experiences, and services are clearly marked demos or coming-soon surfaces.
 - No card details are collected. Cancellation is a full mock refund before check-in.
-- Seed photos use public Unsplash URLs and require network access. Host uploads accept JPEG, PNG, and WebP files up to 3 MB and use the existing private Vercel Blob store; the API serves uploaded files through a same-origin proxy without exposing storage credentials. Local upload needs `BLOB_READ_WRITE_TOKEN` in the backend process; HTTPS URL entry remains available without it. Vercel Hobby Blob quotas are shared with the database snapshot, so this demo deliberately keeps uploads small. Tests use a mocked Blob HTTP client; real upload behavior depends on the connected store and remaining free quota.
-- Maps use Leaflet and OpenStreetMap tiles, with approximate seeded town coordinates. Explore shows the current results page, groups nearby price pins, supports country selection, and opens a photo preview before navigating to a home. Detail pages show the surrounding area. Host-created homes without coordinates show their location text instead of an invented pin. Tile loading needs internet access; the listing list remains usable if it fails. No API key, account, paid plan, or user geolocation is needed. Visible attribution is retained and tiles use normal browser caching; see the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
+- Seed photos use public Unsplash URLs and require network access. Host uploads accept JPEG, PNG, and WebP files up to 3 MB and use the existing private Vercel Blob store; the API serves uploaded files through a same-origin proxy without exposing storage credentials. Local upload needs `BLOB_READ_WRITE_TOKEN` in the backend process; HTTPS URL entry remains available without it. Vercel Hobby Blob quotas are shared with the database snapshot, so this demo deliberately keeps uploads small. Tests use a mocked Blob HTTP client; a real 233,700-byte JPEG upload and byte-for-byte retrieval also passed against the deployed API on 9 October 2026. Free quota still applies.
+- Maps use Leaflet and OpenStreetMap tiles, with approximate seeded town coordinates. Explore shows all matching results across pagination, groups nearby price pins, supports country selection, and opens a photo preview before navigating to a home. Detail pages show the surrounding area. Host-created homes without coordinates show their location text instead of an invented pin. Tile loading needs internet access; the listing list remains usable if it fails. No API key, account, paid plan, or user geolocation is needed. Visible attribution is retained and tiles use normal browser caching; see the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
 - Seed reviews contribute to live per-listing average ratings, and the Superhost flag is seeded and shown on home cards/details. A demo completed trip is available in Trips; each completed confirmed stay may be reviewed once by the booking guest.
 - Dark mode is a persistent browser preference in the account menu. The responsive layout is designed for phone, tablet, and desktop widths.
 - Responsive layout supports mobile, tablet, and desktop. Dates are property-style calendar dates rather than timezone-adjusted timestamps.
