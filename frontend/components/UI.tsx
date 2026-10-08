@@ -26,6 +26,16 @@ import {
   Fence,
 } from "lucide-react";
 import { Listing, dateKey, today, money, prettyDate } from "@/lib/api";
+import { canChooseDate } from "@/lib/calendar";
+
+/** Keep listing geometry stable when a host's external photo is unavailable. */
+export function SafeImage({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const fallback = !src || failed === src;
+  return <img {...props} src={fallback ? "/image-placeholder.svg" : src}
+    alt={fallback ? `${alt || "Listing photo"} — photo unavailable` : alt}
+    onError={() => { if (!fallback && typeof src === "string") setFailed(src); }} />;
+}
 
 export const categoryIcons = [
   Compass,
@@ -96,13 +106,26 @@ export function Modal({
     const prior = document.activeElement as HTMLElement;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // A modal can be nested in a page: make every sibling along that branch
+    // inert, while leaving the dialog and its ancestors interactive.
+    const inert: { node: HTMLElement; previous: boolean }[] = [];
+    let branch: HTMLElement | null = ref.current?.parentElement || null;
+    while (branch?.parentElement && branch !== document.body) {
+      for (const sibling of branch.parentElement.children) {
+        if (sibling !== branch && sibling instanceof HTMLElement) {
+          inert.push({ node: sibling, previous: sibling.inert });
+          sibling.inert = true;
+        }
+      }
+      branch = branch.parentElement;
+    }
     ref.current?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") close.current();
       if (e.key === "Tab") {
-        const els = ref.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled),a,input,select,textarea,[tabindex="0"]',
-        );
+        const els = Array.from(ref.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled),a[href],input:not(:disabled):not([type="hidden"]),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+        ) || []).filter((el) => el.getClientRects().length > 0);
         if (!els?.length) return;
         const first = els[0],
           last = els[els.length - 1];
@@ -122,6 +145,7 @@ export function Modal({
     document.addEventListener("keydown", key);
     return () => {
       document.body.style.overflow = overflow;
+      inert.forEach(({ node, previous }) => { node.inert = previous; });
       document.removeEventListener("keydown", key);
       prior?.focus();
     };
@@ -243,23 +267,27 @@ export function Calendar({
                   const key = dateKey(
                     new Date(d.getFullYear(), d.getMonth(), i + 1),
                   );
-                  const isCheckout =
-                    !!start &&
-                    !end &&
-                    key > start &&
-                    !unavailable.some(
-                      (r) => start < r.check_out && key > r.check_in,
-                    );
-                  const disabled =
-                    key < today() || (booked(key) && !isCheckout);
+                  const disabled = !canChooseDate(key, start, end, unavailable, today());
                   return (
                     <button
                       key={key}
                       disabled={disabled}
                       aria-label={key}
+                      title={booked(key) ? (disabled ? "Unavailable" : "Available for checkout only") : undefined}
                       aria-pressed={key === start || key === end}
                       className={`${key === start || key === end ? "selected" : ""} ${key > start && key < end ? "in-range" : ""}`}
                       onClick={() => choose(key)}
+                      onKeyDown={(event) => {
+                        const offsets: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+                        const offset = offsets[event.key];
+                        if (!offset) return;
+                        event.preventDefault();
+                        const buttons = Array.from(event.currentTarget.closest(".calendar")!.querySelectorAll<HTMLButtonElement>(".calendar-grid button"))
+                          .filter((button) => button.getClientRects().length > 0);
+                        let index = buttons.indexOf(event.currentTarget) + offset;
+                        while (index >= 0 && index < buttons.length && buttons[index].disabled) index += Math.sign(offset);
+                        buttons[index]?.focus();
+                      }}
                     >
                       {i + 1}
                     </button>
@@ -270,6 +298,7 @@ export function Calendar({
           );
         })}
       </div>
+      <p className="calendar-help">Crossed-out dates are unavailable. Checkout may be on another guest’s arrival date.</p>
       <div className="calendar-bottom">
         <span>
           {start
@@ -340,8 +369,8 @@ export function ListingCard({
           onClick={onOpen}
           aria-label={`View ${l.title}`}
         >
-          <img
-            src={l.photos[photo]}
+          <SafeImage
+            src={l.photos[photo % l.photos.length]}
             alt={`${l.property_type} in ${l.location}`}
             loading="lazy"
           />
@@ -357,13 +386,13 @@ export function ListingCard({
         >
           <Heart size={24} />
         </button>
-        <button
+        {l.photos.length > 1 && <button
           className="photo-next"
           aria-label="Next photo"
           onClick={() => setPhoto((photo + 1) % l.photos.length)}
         >
           <ChevronRight size={17} />
-        </button>
+        </button>}
         <div className="photo-dots">
           {l.photos.slice(0, 5).map((_, i) => (
             <span key={i} className={i === photo ? "active" : ""} />

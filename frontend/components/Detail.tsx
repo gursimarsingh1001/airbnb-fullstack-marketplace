@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Heart,
@@ -15,8 +15,8 @@ import {
   Flag,
   Medal,
 } from "lucide-react";
-import { api, Listing, Quote, money, prettyDate } from "@/lib/api";
-import { Calendar, GuestPicker, Modal, amenityIcons } from "./UI";
+import { api, ApiError, Listing, Quote, money, prettyDate } from "@/lib/api";
+import { Calendar, Modal, SafeImage, amenityIcons } from "./UI";
 
 export default function Detail({
   id,
@@ -42,26 +42,35 @@ export default function Detail({
   initialGuests: number;
 }) {
   const [home, setHome] = useState<Listing | null>(null),
+    [loadError, setLoadError] = useState(""),
     [error, setError] = useState(""),
     [start, setStart] = useState(initialStart),
     [end, setEnd] = useState(initialEnd),
     [guests, setGuests] = useState(initialGuests),
     [dates, setDates] = useState(false),
-    [gallery, setGallery] = useState(false),
-    [quote, setQuote] = useState<Quote | null>(null),
+    [gallery, setGallery] = useState<number | null>(null),
+    [quoted, setQuoted] = useState<{ key: string; value: Quote } | null>(null),
+    [quoteVersion, setQuoteVersion] = useState(0),
     [checkout, setCheckout] = useState(false),
     [busy, setBusy] = useState(false),
-    [confirmation, setConfirmation] = useState<number | null>(null);
+    [confirmation, setConfirmation] = useState<({ id: number } & Quote) | null>(null);
+  const submitting = useRef(false);
+  const quoteKey = `${id}/${user}/${start}/${end}/${guests}/${quoteVersion}`;
+  const quote = quoted?.key === quoteKey ? quoted.value : null;
   useEffect(() => {
-    api<Listing>("/listings/" + id, user)
+    const controller = new AbortController();
+    setHome(null);
+    setLoadError("");
+    api<Listing>("/listings/" + id, user, "GET", undefined, { signal: controller.signal })
       .then((h) => {
+        if (controller.signal.aborted) return;
         setHome(h);
         setGuests((n) => Math.min(n, h.max_guests));
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => { if (!controller.signal.aborted) setLoadError(e.message); });
+    return () => controller.abort();
   }, [id, user]);
   useEffect(() => {
-    setQuote(null);
     setError("");
     if (!start || !end) return;
     let active = true;
@@ -72,7 +81,7 @@ export default function Detail({
       guests,
     })
       .then((q) => {
-        if (active) setQuote(q);
+        if (active) setQuoted({ key: quoteKey, value: q });
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -80,24 +89,38 @@ export default function Detail({
     return () => {
       active = false;
     };
-  }, [id, start, end, guests, user]);
+  }, [id, start, end, guests, user, quoteKey]);
+  useEffect(() => {
+    if (gallery !== null) document.getElementById(`gallery-photo-${gallery}`)?.scrollIntoView({ block: "nearest" });
+  }, [gallery]);
   async function reserve() {
-    if (!quote) return;
+    if (!quote || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
+    const request = { listing_id: id, check_in: start, check_out: end, guests, expected_total: quote.total };
+    const storageKey = `airbnb-booking-attempt:${user}:${JSON.stringify(request)}`;
+    let attempt = crypto.randomUUID();
     try {
-      const result = await api<{ id: number }>("/bookings", user, "POST", {
-        listing_id: id,
-        check_in: start,
-        check_out: end,
-        guests,
+      attempt = sessionStorage.getItem(storageKey) || attempt;
+      sessionStorage.setItem(storageKey, attempt);
+    } catch { /* Storage may be disabled; the in-flight lock still prevents double clicks. */ }
+    try {
+      const result = await api<{ id: number } & Quote>("/bookings", user, "POST", request, {
+        headers: { "Idempotency-Key": attempt },
       });
-      setConfirmation(result.id);
+      setConfirmation(result);
       setCheckout(false);
-      setHome(await api<Listing>("/listings/" + id, user));
     } catch (e) {
       setError((e as Error).message);
-      setCheckout(false);
+      if (e instanceof ApiError && e.status < 500) {
+        notify((e as Error).message);
+        setCheckout(false);
+        setQuoted(null);
+        setQuoteVersion((v) => v + 1);
+        api<Listing>("/listings/" + id, user).then(setHome).catch(() => {});
+      }
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -107,7 +130,7 @@ export default function Detail({
         <button className="text-button" onClick={onBack}>
           ← Back to exploring
         </button>
-        <div className="empty">{error || "Getting your getaway ready…"}</div>
+        <div className="empty" role={loadError ? "alert" : "status"}>{loadError || "Getting your getaway ready…"}</div>
       </div>
     );
   const h = home;
@@ -136,7 +159,7 @@ export default function Detail({
     </div>
   );
   return (
-    <main className="detail-shell">
+    <main id="main-content" tabIndex={-1} className="detail-shell">
       <button className="back-link" onClick={onBack}>
         <ArrowLeft size={17} /> Back to exploring
       </button>
@@ -162,6 +185,7 @@ export default function Detail({
           <button
             className="text-button"
             onClick={() => {
+              if (!navigator.clipboard) { notify("Copy the address from your browser to share this home."); return; }
               navigator.clipboard
                 .writeText(window.location.href)
                 .then(() => notify("Link copied. Share your next getaway."))
@@ -184,17 +208,17 @@ export default function Detail({
           </button>
         </div>
       </div>
-      <div className="gallery">
+      <div className={`gallery gallery-count-${Math.min(h.photos.length, 5)}`}>
         {h.photos.slice(0, 5).map((p, i) => (
           <button
             key={i}
-            onClick={() => setGallery(true)}
+            onClick={() => setGallery(i)}
             aria-label={`Open photo ${i + 1}`}
           >
-            <img src={p} alt={`${h.title}, view ${i + 1}`} />
+            <SafeImage src={p} alt={`${h.title}, view ${i + 1}`} />
           </button>
         ))}
-        <button className="show-photos" onClick={() => setGallery(true)}>
+        <button className="show-photos" onClick={() => setGallery(0)}>
           <Grid2X2 size={15} /> Show all photos
         </button>
       </div>
@@ -268,8 +292,8 @@ export default function Detail({
               <span>air</span>cover
             </div>
             <p>
-              Every booking includes protection for host cancellations, listing
-              inaccuracies, and other issues like trouble checking in.
+              This is an educational demo. Reservations and cancellation are
+              simulated; no real travel protection or insurance is provided.
             </p>
             <hr />
             <p className="long-description">{h.description}</p>
@@ -291,7 +315,7 @@ export default function Detail({
           <section className="detail-calendar">
             <h2>
               {start && end
-                ? `${quote?.nights || ""} nights in ${h.location.split(",")[0]}`
+                ? `Your stay in ${h.location.split(",")[0]}`
                 : "Make time for a little getaway"}
             </h2>
             <p className="muted">
@@ -354,7 +378,7 @@ export default function Detail({
               className="primary-button full"
               disabled={
                 busy ||
-                !!(start && end && !quote && !error) ||
+                !!(start && end && !quote) ||
                 h.host_id === user
               }
               onClick={() => {
@@ -368,7 +392,7 @@ export default function Detail({
                   ? "Check availability"
                   : "Reserve"}
             </button>
-            <p className="no-charge">You won’t be charged yet</p>
+            <p className="no-charge">Demo reservation · No real charge</p>
             {breakdown}
           </div>
           <div className="rare-find">
@@ -408,6 +432,7 @@ export default function Detail({
             </article>
           ))}
         </div>
+        {!h.review_count && <p className="muted">No reviews yet. Be one of this home’s first guests.</p>}
       </section>
       <section className="location-section">
         <h2>Where you’ll be</h2>
@@ -423,7 +448,7 @@ export default function Detail({
             <MapPin size={26} />
           </span>
           <span className="map-label">{h.location.split(",")[0]}</span>
-          <small>Illustrative map · Exact address shared after booking</small>
+          <small>Illustrative map · Demo locations only</small>
         </div>
       </section>
       {dates && (
@@ -447,11 +472,11 @@ export default function Detail({
           </div>
         </Modal>
       )}
-      {gallery && (
-        <Modal title="A closer look" wide onClose={() => setGallery(false)}>
+      {gallery !== null && (
+        <Modal title="A closer look" wide onClose={() => setGallery(null)}>
           <div className="gallery-modal">
             {h.photos.map((p, i) => (
-              <img key={i} src={p} alt={`${h.title}, photo ${i + 1}`} />
+              <SafeImage id={`gallery-photo-${i}`} key={i} src={p} alt={`${h.title}, photo ${i + 1}`} />
             ))}
           </div>
         </Modal>
@@ -465,7 +490,7 @@ export default function Detail({
         >
           <div className="modal-body checkout">
             <div className="checkout-home">
-              <img src={h.photos[0]} alt={h.title} />
+              <SafeImage src={h.photos[0]} alt={h.title} />
               <div>
                 <p className="muted">Entire {h.property_type.toLowerCase()}</p>
                 <strong>{h.title}</strong>
@@ -515,6 +540,7 @@ export default function Detail({
               Your reservation will be confirmed immediately. You can cancel any
               time before check-in from Trips.
             </p>
+            {error && <p className="form-error" role="alert">{error}</p>}
             <button
               className="primary-button full"
               disabled={busy}
@@ -535,14 +561,15 @@ export default function Detail({
             </div>
             <h2>Your next chapter starts here.</h2>
             <p>You’re all set for {h.location.split(",")[0]}.</p>
-            <img src={h.photos[0]} alt={h.title} />
+            <SafeImage src={h.photos[0]} alt={h.title} />
             <h3>{h.title}</h3>
             <p>
               {prettyDate(start)} – {prettyDate(end)} · {guests} guests
             </p>
             <p className="muted">
-              Confirmation #AB{String(confirmation).padStart(6, "0")}
+              Confirmation #AB{String(confirmation.id).padStart(6, "0")}
             </p>
+            <p>Confirmed total: <strong>{money(confirmation.total)}</strong> · {confirmation.nights} nights</p>
             <button className="primary-button full" onClick={onBooked}>
               View your trip <ChevronRight size={18} />
             </button>

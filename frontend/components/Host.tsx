@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import {
   Plus,
   Pencil,
@@ -9,7 +9,6 @@ import {
   CalendarDays,
   IndianRupee,
   ImagePlus,
-  Check,
 } from "lucide-react";
 import {
   api,
@@ -21,7 +20,7 @@ import {
   amenityNames,
   categories,
 } from "@/lib/api";
-import { Modal, Empty } from "./UI";
+import { Modal, Empty, SafeImage } from "./UI";
 type Draft = {
   title: string;
   description: string;
@@ -58,10 +57,12 @@ export default function Host({
   user,
   notify,
   onOpen,
+  onChanged,
 }: {
   user: User;
   notify: (s: string) => void;
   onOpen: (id: number) => void;
+  onChanged: () => void;
 }) {
   const [data, setData] = useState<{
       listings: Listing[];
@@ -75,24 +76,45 @@ export default function Host({
     [saving, setSaving] = useState(false),
     [deleting, setDeleting] = useState<Listing | null>(null),
     [formError, setFormError] = useState("");
-  const load = () =>
-    api<{ listings: Listing[]; bookings: Booking[] }>(
+  const inFlight = useRef(false);
+  const loadVersion = useRef(0);
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const version = ++loadVersion.current;
+    setError("");
+    try {
+      const result = await api<{ listings: Listing[]; bookings: Booking[] }>(
       "/host/dashboard",
       user.id,
-    )
-      .then(setData)
-      .catch((e) => setError(e.message));
+      "GET", undefined, { signal },
+      );
+      if (!signal?.aborted && version === loadVersion.current) setData(result);
+    } catch (e) {
+      if (!signal?.aborted && version === loadVersion.current) setError((e as Error).message);
+    }
+  }, [user.id]);
   useEffect(() => {
-    load();
-  }, [user.id]); // Profile changes reload its owned homes.
+    const controller = new AbortController();
+    setData(null);
+    void load(controller.signal);
+    return () => { controller.abort(); };
+  }, [load]);
   function openEditor(h?: Listing) {
-    setDraft(h ? { ...h } : blank);
+    setDraft(h ? Object.fromEntries(Object.keys(blank).map((key) => [key, h[key as keyof Listing]])) as Draft : blank);
     setPhotos(h ? h.photos.join("\n") : "");
     setEdit(h?.id ?? null);
     setFormError("");
   }
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (inFlight.current) return;
+    const photoUrls = photos.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!photoUrls.length || photoUrls.length > 12 || photoUrls.some((value) => {
+      try { const url = new URL(value); return url.protocol !== "https:" || !!url.username || !!url.password; } catch { return true; }
+    })) { setFormError("Add 1–12 valid HTTPS image URLs, one per line, without usernames or passwords."); return; }
+    if (draft.title.trim().length < 5 || draft.description.trim().length < 30 || draft.location.trim().length < 2 || draft.country.trim().length < 2) {
+      setFormError("Enter a title of at least 5 characters, description of at least 30, and a valid location and country."); return;
+    }
+    inFlight.current = true;
     setSaving(true);
     setFormError("");
     try {
@@ -102,13 +124,11 @@ export default function Host({
         edit ? "PUT" : "POST",
         {
           ...draft,
-          photos: photos
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean),
+          photos: photoUrls,
         },
       );
       setEdit(false);
+      onChanged();
       notify(
         edit
           ? "Your listing has been updated."
@@ -118,20 +138,24 @@ export default function Host({
     } catch (e) {
       setFormError((e as Error).message);
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }
   async function remove() {
-    if (!deleting) return;
+    if (!deleting || inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     try {
       await api("/host/listings/" + deleting.id, user.id, "DELETE");
       setDeleting(null);
+      onChanged();
       notify("Listing deleted.");
       await load();
     } catch (e) {
       setFormError((e as Error).message);
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }
@@ -139,7 +163,7 @@ export default function Host({
     setDraft((d) => ({ ...d, [key]: value }));
   const active = data?.bookings.filter((b) => b.status === "confirmed") || [];
   return (
-    <main className="workspace-shell">
+    <main id="main-content" tabIndex={-1} className="workspace-shell">
       <div className="page-title-row">
         <div>
           <p className="eyebrow">YOUR HOSTING SPACE</p>
@@ -150,7 +174,7 @@ export default function Host({
           <Plus size={19} /> Create a listing
         </button>
       </div>
-      {error && <p className="form-error">{error}</p>}
+      {error && <div role="alert"><p className="form-error">{error}</p><button className="text-button" onClick={() => void load()}>Try again</button></div>}
       <div className="stats-grid">
         <div>
           <Home size={23} />
@@ -203,7 +227,7 @@ export default function Host({
           {data?.listings.map((h) => (
             <article className="host-card" key={h.id}>
               <button className="host-photo" onClick={() => onOpen(h.id)}>
-                <img src={h.photos[0]} alt={h.title} />
+                <SafeImage src={h.photos[0]} alt={h.title} />
                 <span>
                   <i /> Live
                 </span>
@@ -240,7 +264,8 @@ export default function Host({
           ))}
         </div>
       )}
-      {tab === "bookings" &&
+      {tab === "listings" && data?.listings.length === 0 && <Empty title="Your hosting journey starts here" text="Create your first listing to welcome guests." action={<button className="dark-button" onClick={() => openEditor()}>Create a listing</button>} />}
+      {tab === "bookings" && data &&
         (data?.bookings.length ? (
           <div className="table-wrap">
             <table>
@@ -307,6 +332,7 @@ export default function Host({
               <textarea
                 required
                 minLength={30}
+                maxLength={5000}
                 rows={4}
                 value={draft.description}
                 onChange={(e) => field("description", e.target.value)}
@@ -318,6 +344,8 @@ export default function Host({
                 Location
                 <input
                   required
+                  minLength={2}
+                  maxLength={100}
                   value={draft.location}
                   onChange={(e) => field("location", e.target.value)}
                   placeholder="Manali, Himachal Pradesh"
@@ -327,6 +355,8 @@ export default function Host({
                 Country
                 <input
                   required
+                  minLength={2}
+                  maxLength={80}
                   value={draft.country}
                   onChange={(e) => field("country", e.target.value)}
                 />
@@ -370,6 +400,7 @@ export default function Host({
                   <input
                     required
                     type="number"
+                    step={1}
                     min={min}
                     max={max}
                     value={draft[key]}
@@ -442,12 +473,13 @@ export default function Host({
         </Modal>
       )}
       {deleting && (
-        <Modal title="Delete this listing?" onClose={() => setDeleting(null)}>
+        <Modal title="Remove this listing?" onClose={() => { if (!saving) setDeleting(null); }}>
           <div className="modal-body">
             <h2>{deleting.title}</h2>
             <p>
               This home will be removed from search and your dashboard. Existing
-              trip records are preserved.
+              trip records are preserved. Listings with an upcoming or ongoing
+              confirmed stay cannot be removed.
             </p>
             {formError && (
               <p className="form-error" role="alert">
@@ -455,7 +487,7 @@ export default function Host({
               </p>
             )}
             <div className="form-actions">
-              <button className="text-button" onClick={() => setDeleting(null)}>
+              <button className="text-button" disabled={saving} onClick={() => setDeleting(null)}>
                 Keep listing
               </button>
               <button

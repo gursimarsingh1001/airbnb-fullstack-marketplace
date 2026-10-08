@@ -11,6 +11,7 @@ Wire headers follow Vercel's official Blob SDK (put-helpers.ts and get.ts).
 import os
 import sqlite3
 import tempfile
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -98,11 +99,14 @@ class BlobStore:
 
 class SnapshotConnection(sqlite3.Connection):
     def commit(self):
-        changed = self.total_changes != self._saved_changes
         super().commit()
-        if changed:
-            self._etag = self._store.write(self._snapshot_path.read_bytes(), self._etag)
-            self._saved_changes = self.total_changes
+        content = self._snapshot_path.read_bytes()
+        digest = hashlib.sha256(content).digest()
+        # total_changes ignores DDL and includes rolled-back rows. The committed
+        # file hash correctly covers migrations, new databases, and real writes.
+        if digest != self._saved_digest:
+            self._etag = self._store.write(content, self._etag)
+            self._saved_digest = digest
 
     def close(self):
         super().close()
@@ -129,8 +133,10 @@ def connect_snapshot(store=None):
     db._snapshot_path = path
     db._store = store
     db._etag = etag
-    db._saved_changes = 0
+    db._saved_digest = hashlib.sha256(content or b"").digest()
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     db.execute("PRAGMA journal_mode = DELETE")
+    if content is None:
+        db._saved_digest = hashlib.sha256(path.read_bytes()).digest()
     return db

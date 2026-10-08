@@ -1,20 +1,23 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
+import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 from backend import database
 from backend.main import app
+from backend.booking_rules import booking_today
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_BLOB_ENABLED", raising=False)
     monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "test.db"))
     with TestClient(app) as c:
         yield c
 
 
 def stay(listing=4, offset=60, nights=3):
-    start = date.today() + timedelta(days=offset)
+    start = booking_today() + timedelta(days=offset)
     return {
         "listing_id": listing,
         "check_in": str(start),

@@ -44,6 +44,8 @@ export type Booking = {
   check_out: string;
   guests: number;
   nightly_price: number;
+  cleaning_fee: number;
+  service_fee: number;
   total: number;
   status: string;
   guest_name: string;
@@ -59,7 +61,8 @@ export type Quote = {
 export const money = (n: number) => "₹" + n.toLocaleString("en-IN");
 export const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-export const today = () => dateKey(new Date());
+// Booking policy uses the current UTC date; stay dates themselves have no timezone.
+export const today = () => new Date().toISOString().slice(0, 10);
 export const prettyDate = (s: string) =>
   s
     ? new Date(s + "T12:00:00").toLocaleDateString("en-GB", {
@@ -67,11 +70,22 @@ export const prettyDate = (s: string) =>
         month: "short",
       })
     : "Add dates";
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+export type ApiOptions = {
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+};
 export async function api<T>(
   path: string,
   user: number,
   method = "GET",
   body?: unknown,
+  options: ApiOptions = {},
 ): Promise<T> {
   const base =
     process.env.NEXT_PUBLIC_API_URL ||
@@ -87,22 +101,32 @@ export async function api<T>(
       headers: {
         "Content-Type": "application/json",
         "X-Demo-User": String(user),
+        ...options.headers,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: options.signal,
+      cache: "no-store",
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
     throw new Error(
       "We couldn’t connect. Please check your connection and try again.",
     );
   }
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new ApiError("The server returned an unexpected response. Please try again.", response.status);
+  }
   if (!response.ok)
-    throw new Error(
-      typeof data.detail === "string"
+    throw new ApiError(
+      typeof data?.detail === "string"
         ? data.detail
-        : Array.isArray(data.detail)
+        : Array.isArray(data?.detail)
           ? data.detail.map((e: { msg: string }) => e.msg).join(". ")
           : "Something went wrong. Please try again.",
+      response.status,
     );
   return data;
 }

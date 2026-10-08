@@ -4,6 +4,7 @@ export const metadata: Metadata = {
   title: "Airbnb — Find your kind of getaway",
   description:
     "Discover beautiful homes, unique stays, and your next favourite place. An independent full-stack assignment demo.",
+  icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }] },
 };
 export default function RootLayout({
   children,

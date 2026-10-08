@@ -1,16 +1,14 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
   Globe,
   Menu,
   UserRound,
-  ChevronDown,
   ChevronRight,
   ArrowUpRight,
   Heart,
   Map,
-  MapPin,
   Home,
   BriefcaseBusiness,
   Sparkles,
@@ -18,9 +16,7 @@ import {
   X,
   Check,
   CalendarDays,
-  ShieldCheck,
   ArrowLeft,
-  Star,
 } from "lucide-react";
 import {
   api,
@@ -31,6 +27,7 @@ import {
   prettyDate,
   categories,
   amenityNames,
+  today,
 } from "@/lib/api";
 import {
   Logo,
@@ -41,6 +38,7 @@ import {
   categoryIcons,
   Empty,
   Loading,
+  SafeImage,
 } from "./UI";
 import Detail from "./Detail";
 import Host from "./Host";
@@ -54,15 +52,21 @@ const guest: User = {
 };
 const defaultFilters = {
   min: 0,
-  max: 30000,
+  max: 1000000,
   type: "",
   amenities: [] as string[],
 };
 type Filters = typeof defaultFilters;
 type SearchState = { q: string; start: string; end: string; guests: number };
+const searchStorageKey = "airbnb-search-v1";
+const emptySearch: SearchState = { q: "", start: "", end: "", guests: 1 };
+function validDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+}
 
 export default function Marketplace() {
   const [user, setUser] = useState<User>(guest),
+    [ready, setReady] = useState(false),
     [users, setUsers] = useState<User[]>([]),
     [route, setRoute] = useState("explore"),
     [menu, setMenu] = useState(false),
@@ -89,11 +93,18 @@ export default function Marketplace() {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [wishlist, setWishlist] = useState<Listing[]>([]),
+    [wishlistLoading, setWishlistLoading] = useState(true),
+    [wishlistError, setWishlistError] = useState(""),
     [trips, setTrips] = useState<Booking[]>([]),
+    [tripsLoading, setTripsLoading] = useState(true),
+    [tripsError, setTripsError] = useState(""),
     [cancel, setCancel] = useState<Booking | null>(null),
     [busy, setBusy] = useState(false),
     [refresh, setRefresh] = useState(0),
     [mapView, setMapView] = useState(false);
+  const currentUser = useRef(user.id);
+  const pendingSaves = useRef(new Set<string>());
+  const cancelling = useRef(false);
   const notify = useCallback((s: string) => setToast(s), []);
   const navigate = (target: string) => {
     window.location.hash = target;
@@ -102,27 +113,59 @@ export default function Marketplace() {
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   useEffect(() => {
+    const controller = new AbortController();
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(searchStorageKey) || "null");
+      if (stored) {
+        const applied = stored.search || {};
+        const datesValid = validDate(applied.start) && validDate(applied.end) && applied.start >= today() && applied.end > applied.start;
+        const restored: SearchState = {
+          q: typeof applied.q === "string" ? applied.q.slice(0, 100) : "",
+          start: datesValid ? applied.start : "", end: datesValid ? applied.end : "",
+          guests: Number.isInteger(applied.guests) && applied.guests >= 1 && applied.guests <= 16 ? applied.guests : 1,
+        };
+        setSearch(restored); setQ(restored.q); setStart(restored.start); setEnd(restored.end); setGuests(restored.guests);
+        if (categories.includes(stored.category)) setCategory(stored.category);
+        if (stored.filters && Number.isInteger(stored.filters.min) && Number.isInteger(stored.filters.max) && stored.filters.min >= 0 && stored.filters.max >= stored.filters.min && stored.filters.max <= 1000000) {
+          setFilters({ min: stored.filters.min, max: stored.filters.max,
+            type: ["Villa", "Cabin", "Cottage", "Apartment", "Tiny home"].includes(stored.filters.type) ? stored.filters.type : "",
+            amenities: Array.isArray(stored.filters.amenities) ? stored.filters.amenities.filter((a: string) => amenityNames.includes(a)) : [],
+          });
+        }
+        if (Number.isInteger(stored.page) && stored.page > 0) setPage(stored.page);
+      }
+    } catch { /* Browsing still works when session storage is unavailable. */ }
     const change = () => {
       setRoute(window.location.hash.slice(1) || "explore");
       setMapView(false);
     };
     change();
     window.addEventListener("hashchange", change);
-    api<User[]>("/users", 1)
+    api<User[]>("/users", 1, "GET", undefined, { signal: controller.signal })
       .then((list) => {
+        if (controller.signal.aborted) return;
         setUsers(list);
-        const id = Number(localStorage.getItem("airbnb-demo-user"));
-        setUser(list.find((u) => u.id === id) || guest);
+        let id = 1;
+        try { id = Number(localStorage.getItem("airbnb-demo-user")); } catch { /* Fall back to the guest profile. */ }
+        const profile = list.find((u) => u.id === id) || guest;
+        currentUser.current = profile.id;
+        setUser(profile);
       })
-      .catch(() => {});
-    return () => window.removeEventListener("hashchange", change);
-  }, []);
+      .catch((e) => { if (!controller.signal.aborted) notify(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setReady(true); });
+    return () => { controller.abort(); window.removeEventListener("hashchange", change); };
+  }, [notify]);
+  useEffect(() => {
+    if (!ready) return;
+    try { sessionStorage.setItem(searchStorageKey, JSON.stringify({ search, category, filters, page })); } catch { /* Search works without browser storage. */ }
+  }, [ready, search, category, filters, page]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 4200);
     return () => clearTimeout(t);
   }, [toast]);
   useEffect(() => {
+    if (!ready) return;
     let active = true;
     setLoading(true);
     setError("");
@@ -150,6 +193,7 @@ export default function Marketplace() {
           setHomes(r.items);
           setTotal(r.total);
           setPages(r.pages);
+          if (page > Math.max(1, r.pages)) setPage(Math.max(1, r.pages));
         }
       })
       .catch((e) => {
@@ -161,24 +205,30 @@ export default function Marketplace() {
     return () => {
       active = false;
     };
-  }, [user.id, search, category, filters, page, refresh]);
+  }, [ready, user.id, search, category, filters, page, refresh]);
   useEffect(() => {
+    if (!ready) return;
     let active = true;
+    setWishlistLoading(true); setWishlistError("");
     api<Listing[]>("/wishlists", user.id)
       .then((r) => {
         if (active) setWishlist(r);
       })
-      .catch((e) => notify(e.message));
-    if (route === "trips")
+      .catch((e) => { if (active) setWishlistError(e.message); })
+      .finally(() => { if (active) setWishlistLoading(false); });
+    if (route === "trips") {
+      setTripsLoading(true); setTripsError("");
       api<Booking[]>("/bookings", user.id)
         .then((r) => {
           if (active) setTrips(r);
         })
-        .catch((e) => notify(e.message));
+        .catch((e) => { if (active) setTripsError(e.message); })
+        .finally(() => { if (active) setTripsLoading(false); });
+    }
     return () => {
       active = false;
     };
-  }, [user.id, route, refresh, notify]);
+  }, [ready, user.id, route, refresh]);
   useEffect(() => {
     const close = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenu(false);
@@ -187,9 +237,14 @@ export default function Marketplace() {
     return () => window.removeEventListener("keydown", close);
   }, []);
   async function toggleSave(h: Listing) {
+    if (!ready || wishlistLoading || wishlistError) { notify("Your wishlist is still loading. Please try again shortly."); return; }
+    const pendingKey = `${user.id}/${h.id}`;
+    if (pendingSaves.current.has(pendingKey)) return;
+    pendingSaves.current.add(pendingKey);
     const exists = wishlist.some((w) => w.id === h.id);
     try {
       await api("/wishlists/" + h.id, user.id, exists ? "DELETE" : "PUT");
+      if (currentUser.current !== user.id) return;
       setWishlist((w) => (exists ? w.filter((x) => x.id !== h.id) : [...w, h]));
       notify(
         exists
@@ -198,6 +253,8 @@ export default function Marketplace() {
       );
     } catch (e) {
       notify((e as Error).message);
+    } finally {
+      pendingSaves.current.delete(pendingKey);
     }
   }
   function searchHomes() {
@@ -206,7 +263,10 @@ export default function Marketplace() {
       notify("Choose both check-in and checkout to search.");
       return;
     }
-    setSearch({ q, start, end, guests });
+    if (start && (start < today() || end <= start || (Date.parse(end) - Date.parse(start)) / 86400000 > 90)) {
+      setModal("dates"); notify("Choose a future stay between 1 and 90 nights."); return;
+    }
+    setSearch({ q: q.trim(), start, end, guests });
     setPage(1);
     navigate("explore");
   }
@@ -217,12 +277,15 @@ export default function Marketplace() {
     setGuests(1);
     setCategory("");
     setFilters(defaultFilters);
-    setSearch({ q: "", start: "", end: "", guests: 1 });
+    setSearch(emptySearch);
     setPage(1);
   }
   function switchUser(u: User, target?: string) {
+    currentUser.current = u.id;
     setUser(u);
-    localStorage.setItem("airbnb-demo-user", String(u.id));
+    if (u.id !== user.id) { setWishlist([]); setTrips([]); setWishlistLoading(true); setTripsLoading(true); }
+    setCancel(null);
+    try { localStorage.setItem("airbnb-demo-user", String(u.id)); } catch { /* Keep the profile for this session. */ }
     setModal("");
     setMenu(false);
     notify(`You’re browsing as ${u.name}.`);
@@ -234,7 +297,8 @@ export default function Marketplace() {
     else setModal("host-profile");
   }
   async function cancelTrip() {
-    if (!cancel) return;
+    if (!cancel || cancelling.current) return;
+    cancelling.current = true;
     setBusy(true);
     try {
       await api("/bookings/" + cancel.id, user.id, "DELETE");
@@ -244,14 +308,15 @@ export default function Marketplace() {
     } catch (e) {
       notify((e as Error).message);
     } finally {
+      cancelling.current = false;
       setBusy(false);
     }
   }
-  const listingId = route.startsWith("listing/")
+  const listingId = /^listing\/[1-9]\d*$/.test(route)
     ? Number(route.split("/")[1])
     : null;
   const filterCount =
-    (filters.min > 0 || filters.max < 30000 ? 1 : 0) +
+    (filters.min > 0 || filters.max < 1000000 ? 1 : 0) +
     (filters.type ? 1 : 0) +
     filters.amenities.length;
   const isExplore = route === "explore";
@@ -268,6 +333,7 @@ export default function Marketplace() {
     ));
   return (
     <>
+      <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); const main = document.getElementById("main-content"); main?.focus(); main?.scrollIntoView(); }}>Skip to main content</a>
       <header className={`site-header ${isExplore ? "expanded" : ""}`}>
         <div className="topbar">
           <button
@@ -336,7 +402,7 @@ export default function Marketplace() {
               >
                 <Menu size={18} />
                 <span className="profile-avatar">
-                  <UserRound size={20} />
+                  <span aria-hidden="true">{user.avatar}</span>
                 </span>
               </button>
               {menu && (
@@ -488,7 +554,7 @@ export default function Marketplace() {
               {filterCount > 0 && <span>{filterCount}</span>}
             </button>
           </div>
-          <main className="explore-shell">
+          <main id="main-content" tabIndex={-1} className="explore-shell">
             <div className="explore-heading">
               <div>
                 <div className="eyebrow">A LITTLE CHANGE OF SCENERY</div>
@@ -517,7 +583,7 @@ export default function Marketplace() {
                 </span>
               </div>
             </div>
-            {search.q || search.start || filterCount ? (
+            {search.q || search.start || filterCount || category || search.guests > 1 ? (
               <div className="active-filters">
                 <span>
                   {search.q || "Anywhere"} ·{" "}
@@ -617,7 +683,7 @@ export default function Marketplace() {
           )}
         </>
       )}
-      {listingId && (
+      {listingId !== null && ready && (
         <Detail
           key={`${listingId}-${user.id}`}
           id={listingId}
@@ -640,13 +706,13 @@ export default function Marketplace() {
         />
       )}
       {route === "wishlists" && (
-        <main className="workspace-shell">
+        <main id="main-content" tabIndex={-1} className="workspace-shell">
           <p className="eyebrow">KEEP THE GOOD ONES CLOSE</p>
           <h1>Your wishlists</h1>
           <p className="muted page-subtitle">
             Places you love. Trips you haven’t taken yet.
           </p>
-          {wishlist.length ? (
+          {wishlistLoading ? <Loading /> : wishlistError ? <Empty title="Your wishlist couldn’t load" text={wishlistError} action={<button className="dark-button" onClick={() => setRefresh((n) => n + 1)}>Try again</button>} /> : wishlist.length ? (
             <div className="listing-grid">{cards(wishlist)}</div>
           ) : (
             <Empty
@@ -665,18 +731,18 @@ export default function Marketplace() {
         </main>
       )}
       {route === "trips" && (
-        <main className="workspace-shell">
+        <main id="main-content" tabIndex={-1} className="workspace-shell">
           <p className="eyebrow">SOMETHING TO LOOK FORWARD TO</p>
           <h1>Your trips</h1>
           <p className="muted page-subtitle">
             New places. New memories. All in one place.
           </p>
-          {trips.length ? (
+          {tripsLoading ? <Loading /> : tripsError ? <Empty title="Your trips couldn’t load" text={tripsError} action={<button className="dark-button" onClick={() => setRefresh((n) => n + 1)}>Try again</button>} /> : trips.length ? (
             <div className="trips-grid">
               {trips.map((b) => (
                 <article className="trip-card" key={b.id}>
                   <button onClick={() => navigate("listing/" + b.listing.id)}>
-                    <img src={b.listing.photos[0]} alt={b.listing.title} />
+                    <SafeImage src={b.listing.photos[0]} alt={b.listing.title} />
                   </button>
                   <div className="trip-copy">
                     <span className={`status ${b.status}`}>{b.status}</span>
@@ -703,7 +769,7 @@ export default function Marketplace() {
                       >
                         View home <ArrowUpRight size={16} />
                       </button>
-                      {b.status === "confirmed" && (
+                      {b.status === "confirmed" && b.check_in >= today() && (
                         <button
                           className="text-button muted"
                           onClick={() => setCancel(b)}
@@ -738,12 +804,14 @@ export default function Marketplace() {
       {route === "host" &&
         (user.role === "host" ? (
           <Host
+            key={user.id}
             user={user}
             notify={notify}
             onOpen={(id) => navigate("listing/" + id)}
+            onChanged={() => setRefresh((n) => n + 1)}
           />
         ) : (
-          <main className="workspace-shell">
+          <main id="main-content" tabIndex={-1} className="workspace-shell">
             <Empty
               title="Make yourself at home, host"
               text="Choose a demo host profile to create and manage listings."
@@ -758,6 +826,10 @@ export default function Marketplace() {
             />
           </main>
         ))}
+      {!ready && listingId !== null && <Loading />}
+      {listingId === null && !["explore", "trips", "wishlists", "host"].includes(route) && (
+        <main id="main-content" tabIndex={-1} className="workspace-shell"><Empty title="We couldn’t find that page" text="This link may be incomplete or out of date." action={<button className="dark-button" onClick={() => navigate("explore")}>Back to exploring</button>} /></main>
+      )}
       <footer>
         <div className="footer-main">
           <div>
@@ -769,6 +841,7 @@ export default function Marketplace() {
                     key={d}
                     onClick={() => {
                       setQ(d);
+                      setStart(""); setEnd(""); setGuests(1);
                       setSearch({ q: d, start: "", end: "", guests: 1 });
                       setCategory("");
                       setFilters(defaultFilters);
@@ -891,6 +964,8 @@ export default function Marketplace() {
                     aria-label="Minimum price"
                     type="number"
                     min={0}
+                    max={1000000}
+                    step={1}
                     value={draftFilters.min}
                     onChange={(e) =>
                       setDraftFilters((f) => ({ ...f, min: +e.target.value }))
@@ -903,6 +978,8 @@ export default function Marketplace() {
                     aria-label="Maximum price"
                     type="number"
                     min={draftFilters.min}
+                    max={1000000}
+                    step={1}
                     value={draftFilters.max}
                     onChange={(e) =>
                       setDraftFilters((f) => ({ ...f, max: +e.target.value }))
@@ -964,8 +1041,8 @@ export default function Marketplace() {
               <button
                 className="dark-button"
                 onClick={() => {
-                  if (draftFilters.min > draftFilters.max) {
-                    notify("Maximum price should be higher than minimum.");
+                  if (!Number.isInteger(draftFilters.min) || !Number.isInteger(draftFilters.max) || draftFilters.min < 0 || draftFilters.max > 1000000 || draftFilters.min > draftFilters.max) {
+                    notify("Enter whole-rupee prices from ₹0 to ₹10,00,000, with maximum at least minimum.");
                     return;
                   }
                   setFilters(draftFilters);
@@ -1108,7 +1185,7 @@ export default function Marketplace() {
         </Modal>
       )}
       {cancel && (
-        <Modal title="Cancel your trip?" onClose={() => setCancel(null)}>
+        <Modal title="Cancel your trip?" onClose={() => { if (!busy) setCancel(null); }}>
           <div className="modal-body">
             <h2>{cancel.listing.title}</h2>
             <p>
@@ -1119,7 +1196,7 @@ export default function Marketplace() {
               available to other guests. No real payment was taken.
             </p>
             <div className="form-actions">
-              <button className="text-button" onClick={() => setCancel(null)}>
+              <button className="text-button" disabled={busy} onClick={() => setCancel(null)}>
                 Keep my trip
               </button>
               <button

@@ -70,15 +70,25 @@ CREATE TABLE IF NOT EXISTS wishlists (
 
 def initialize():
     from .blob_database import SnapshotConflict
+    from .migrations import migrate
+    from .seed import seed
 
-    try:
-        with connect() as db:
-            db.executescript(SCHEMA)
-            from .seed import seed
-
+    # A single transaction protects both first seed and additive upgrades. Retry
+    # a cloud cold-start race against the winner's snapshot, never reset data.
+    for attempt in range(3):
+        db = connect()
+        try:
+            db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA)
+            migrate(db)
             seed(db)
-    except SnapshotConflict:
-        # Another cold-start instance seeded the same private Blob first.
-        # Its complete snapshot is authoritative; never replace it with ours.
-        if os.getenv("DATABASE_BLOB_ENABLED") != "1":
+            db.commit()
+            return
+        except SnapshotConflict:
+            db.rollback()
+            if attempt == 2:
+                raise
+        except Exception:
+            db.rollback()
             raise
+        finally:
+            db.close()

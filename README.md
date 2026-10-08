@@ -21,7 +21,7 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 
 ## Quick start
 
-Requires **Node.js 22.9+** (24 recommended) and **Python 3.10+**. Run commands from the repository root unless otherwise noted.
+Requires **Node.js 24+** and **Python 3.10+**. Run commands from the repository root unless otherwise noted.
 
 ### 1. Backend
 
@@ -173,11 +173,30 @@ Interactive OpenAPI reference is available at `/docs` and schema at `/openapi.js
 
 Search parameters: `q`, `category`, `property_type`, `min_price`, `max_price`, `guests`, `amenities` (comma separated), `check_in`, `check_out`, `page`, `limit`.
 
-Booking/quote payload:
+Quote request (`POST /api/quote`):
 
 ```json
 {"listing_id":4,"check_in":"2027-01-10","check_out":"2027-01-13","guests":2}
 ```
+
+The response contains `nights`, `nightly_price`, `subtotal`, `cleaning_fee`, `service_fee`, `total`, and `currency`. Checkout sends that server-quoted total back as `expected_total`, and includes a unique `Idempotency-Key` header:
+
+```http
+POST /api/bookings
+X-Demo-User: 1
+Idempotency-Key: 2bf61684-...
+Content-Type: application/json
+```
+
+```json
+{"listing_id":4,"check_in":"2027-01-10","check_out":"2027-01-13","guests":2,"expected_total":19368}
+```
+
+The API recomputes the price and checks that it still matches before inserting the reservation. A retry with the same key and identical request returns the same confirmation; using that key for changed checkout details returns `409`. The create response includes the reservation ID/status and the persisted price breakdown. An overlapping stay or changed quote also returns `409`; malformed or out-of-policy dates return `422`; an unknown listing returns `404`.
+
+### Booking walkthrough
+
+The browser asks `POST /api/quote` for a selected listing, date range, and guest count. The FastAPI endpoint reads the current listing and confirmed reservations from SQLite, applies the UTC date-only policy, and returns the exact integer-INR price breakdown. Checkout then posts those selections, the quoted total, the selected demo user, and an idempotency key. A SQLite `BEGIN IMMEDIATE` transaction locks writers before checking the half-open reservation interval and inserting the price snapshot. SQLite constraints/triggers repeat the critical checks. Only after commit does the API return the confirmed server total; My Trips and the host dashboard read the same persisted row. On the hosted free demo the snapshot adapter reads/publishes that SQLite file in private Blob storage and detects stale writers with an ETag check.
 
 Demo identity uses the `X-Demo-User` header (default `1`). Profiles: Alex/guest `1`, Ananya/host `2`, Marco/host `3`, Made/host `4`. Role and ownership checks are enforced server-side, but **identity selection is intentionally public and is not production authentication**. Do not enter private data in this demo.
 
@@ -186,13 +205,16 @@ Demo identity uses the `X-Demo-User` header (default `1`). Profiles: Alex/guest 
 ```bash
 python -m pytest backend/tests -q
 cd frontend
+npm ci
+npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
 
-The 14 backend tests cover search and pagination, exact server quotes, DB persistence, overlapping intervals, adjacent stays, concurrent double booking, invalid input, host ownership, CRUD, cancellation, per-user/idempotent wishlists, transaction rollback, cloud snapshot durability, and stale-writer rejection. GitHub Actions runs tests and the production build on pushes and pull requests.
+The isolated backend regression suite and frontend domain/API tests cover search and pagination, exact server quotes, SQLite persistence and migrations, all overlap shapes, adjacent stays, concurrent double booking, idempotent retries, invalid input, host ownership, CRUD, cancellation, per-user wishlists, and cloud snapshot durability/stale-writer rejection. GitHub Actions runs backend tests, frontend lint/typecheck/unit tests, and the production build on pushes and pull requests. The current audit's measured results are recorded in [docs/audit.md](docs/audit.md); screenshots are in [docs/screenshots/](docs/screenshots/).
 
-Manual browser checks include date selection, checkout, persisted trips, host forms, filters, empty states, and mobile/desktop layouts. See [verification notes](docs/VERIFICATION.md).
+Manual browser checks include date selection, checkout, persisted trips, host forms, filters, empty states, and mobile/desktop layouts. See the [current audit evidence](docs/audit.md) and the [earlier verification record](docs/VERIFICATION.md) (the latter records a previous release).
 
 ## Assumptions and limits
 

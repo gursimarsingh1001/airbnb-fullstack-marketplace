@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from datetime import timedelta
+from .booking_rules import booking_today
 
 
 def photo(key):
@@ -335,7 +336,7 @@ def seed(db):
                     uid,
                     4 if i % 3 == 0 and j == 1 else 5,
                     comment,
-                    str(date.today() - timedelta(days=20 + j * 24)),
+                    str(booking_today() - timedelta(days=20 + j * 24)),
                 ),
             )
     for lid, uid, days in [(1, 5, 7), (2, 1, 14), (3, 6, 5), (5, 5, 21)]:
@@ -347,8 +348,8 @@ def seed(db):
             (
                 lid,
                 uid,
-                str(date.today() + timedelta(days=days)),
-                str(date.today() + timedelta(days=days + 3)),
+                str(booking_today() + timedelta(days=days)),
+                str(booking_today() + timedelta(days=days + 3)),
                 2,
                 p,
                 900,

@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Annotated
 import os
 import sqlite3
+import hashlib
+import json
 
 from fastapi import FastAPI, Depends, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from . import database
 from .blob_database import SnapshotConflict, SnapshotUnavailable
+from .booking_rules import booking_today, price_quote, stored_quote
 
 
 @asynccontextmanager
@@ -27,7 +30,7 @@ app.add_middleware(
         "CORS_ORIGINS", "http://localhost:3001,http://127.0.0.1:3001"
     ).split(","),
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "X-Demo-User"],
+    allow_headers=["Content-Type", "X-Demo-User", "Idempotency-Key"],
 )
 
 
@@ -105,28 +108,14 @@ def serialize_listing(db, row):
 
 
 def validate_dates(check_in, check_out):
-    if check_in < date.today():
+    if check_in < booking_today():
         raise HTTPException(422, "Check-in must be today or later.")
     nights = (check_out - check_in).days
     if not 1 <= nights <= 90:
         raise HTTPException(422, "Choose a stay between 1 and 90 nights.")
-    if check_out > date.today() + timedelta(days=730):
+    if check_out > booking_today() + timedelta(days=730):
         raise HTTPException(422, "Choose dates within the next two years.")
     return nights
-
-
-def price_quote(row, nights):
-    subtotal = row["price"] * nights
-    service = (subtotal * 14 + 50) // 100
-    return dict(
-        nights=nights,
-        nightly_price=row["price"],
-        subtotal=subtotal,
-        cleaning_fee=row["cleaning_fee"],
-        service_fee=service,
-        total=subtotal + row["cleaning_fee"] + service,
-        currency="INR",
-    )
 
 
 def check_available(db, id, check_in, check_out):
@@ -142,7 +131,7 @@ def check_available(db, id, check_in, check_out):
 @app.get("/api/health")
 def health(db: DB):
     db.execute("SELECT 1")
-    return {"status": "ok", "database": "sqlite"}
+    return {"status": "ok", "database": "sqlite", "booking_today": str(booking_today()), "date_policy": "UTC"}
 
 
 @app.get("/api/users")
@@ -153,18 +142,21 @@ def users(db: DB):
 @app.get("/api/listings")
 def listings(
     db: DB,
-    q: str = "",
+    q: str = Query("", max_length=100),
     category: str = "",
     property_type: str = "",
-    min_price: int = 0,
-    max_price: int = 1000000,
-    guests: int = 1,
+    min_price: int = Query(0, ge=0, le=1000000),
+    max_price: int = Query(1000000, ge=0, le=1000000),
+    guests: int = Query(1, ge=1, le=16),
     amenities: str = "",
     check_in: date | None = None,
     check_out: date | None = None,
     page: int = Query(1, ge=1),
     limit: int = Query(15, ge=1, le=50),
 ):
+    if min_price > max_price:
+        raise HTTPException(422, "Minimum price cannot exceed maximum price.")
+    q = q.strip()
     clauses = ["deleted=0", "price>=?", "price<=?", "max_guests>=?"]
     args = [min_price, max_price, guests]
     if q:
@@ -176,7 +168,7 @@ def listings(
     if property_type:
         clauses += ["property_type=?"]
         args += [property_type]
-    for amenity in filter(None, amenities.split(",")):
+    for amenity in sorted({a.strip() for a in amenities.split(",") if a.strip()}):
         clauses += [
             "EXISTS(SELECT 1 FROM listing_amenities la JOIN amenities a ON a.id=la.amenity_id WHERE la.listing_id=listings.id AND a.name=?)"
         ]
@@ -219,17 +211,18 @@ def listing(id: int, db: DB):
         dict(r)
         for r in db.execute(
             "SELECT check_in,check_out FROM bookings WHERE listing_id=? AND status='confirmed' AND check_out>=?",
-            (id, str(date.today())),
+            (id, str(booking_today())),
         )
     ]
     return result
 
 
 class BookingInput(BaseModel):
-    listing_id: int
+    listing_id: int = Field(strict=True, ge=1)
     check_in: date
     check_out: date
-    guests: int = Field(ge=1, le=16)
+    guests: int = Field(strict=True, ge=1, le=16)
+    expected_total: int | None = Field(default=None, strict=True, ge=1)
 
 
 @app.post("/api/quote")
@@ -243,16 +236,32 @@ def quote(body: BookingInput, db: DB):
 
 
 @app.post("/api/bookings", status_code=201)
-def book(body: BookingInput, db: DB, user: User):
+def book(
+    body: BookingInput,
+    db: DB,
+    user: User,
+    idempotency_key: Annotated[str | None, Header(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")] = None,
+):
     # The write lock covers the availability check and INSERT, preventing double booking.
     db.execute("BEGIN IMMEDIATE")
     try:
+        fingerprint = hashlib.sha256(json.dumps(body.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
+        if idempotency_key:
+            existing = db.execute("SELECT * FROM bookings WHERE user_id=? AND idempotency_key=?", (user["id"], idempotency_key)).fetchone()
+            if existing:
+                if existing["request_fingerprint"] != fingerprint:
+                    raise HTTPException(409, "This checkout was already submitted with different details. Start a new checkout.")
+                if existing["status"] != "confirmed":
+                    raise HTTPException(409, "This reservation was cancelled. Start a new checkout to book again.")
+                return {"id": existing["id"], "status": "confirmed", **stored_quote(existing)}
         row = listing_row(db, body.listing_id)
         if row["host_id"] == user["id"]:
             raise HTTPException(422, "You cannot book your own home.")
         cost = quote(body, db)
+        if body.expected_total is not None and body.expected_total != cost["total"]:
+            raise HTTPException(409, "The price changed. Review the updated price before confirming your stay.")
         cursor = db.execute(
-            "INSERT INTO bookings(listing_id,user_id,check_in,check_out,guests,nightly_price,cleaning_fee,service_fee,total) VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO bookings(listing_id,user_id,check_in,check_out,guests,nightly_price,cleaning_fee,service_fee,total,idempotency_key,request_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (
                 body.listing_id,
                 user["id"],
@@ -263,6 +272,8 @@ def book(body: BookingInput, db: DB, user: User):
                 cost["cleaning_fee"],
                 cost["service_fee"],
                 cost["total"],
+                idempotency_key,
+                fingerprint if idempotency_key else None,
             ),
         )
         db.commit()
@@ -275,7 +286,8 @@ def book(body: BookingInput, db: DB, user: User):
 def booking_list(db, rows):
     return [
         {
-            **dict(r),
+            **{k: r[k] for k in r.keys() if k not in ("idempotency_key", "request_fingerprint")},
+            **stored_quote(r),
             "listing": serialize_listing(db, listing_row(db, r["listing_id"], True)),
             "guest_name": db.execute(
                 "SELECT name FROM users WHERE id=?", (r["user_id"],)
@@ -303,7 +315,7 @@ def cancel(id: int, db: DB, user: User):
     ).fetchone()
     if not row:
         raise HTTPException(404, "Booking not found.")
-    if row["check_in"] < str(date.today()):
+    if row["check_in"] < str(booking_today()):
         raise HTTPException(422, "Past stays cannot be cancelled.")
     db.execute("UPDATE bookings SET status='cancelled' WHERE id=?", (id,))
     db.commit()
@@ -345,12 +357,12 @@ class ListingInput(BaseModel):
     country: str = Field(min_length=2, max_length=80)
     category: str
     property_type: str
-    price: int = Field(ge=500, le=1000000)
-    cleaning_fee: int = Field(default=900, ge=0, le=100000)
-    max_guests: int = Field(ge=1, le=16)
-    bedrooms: int = Field(ge=1, le=20)
-    beds: int = Field(ge=1, le=30)
-    bathrooms: int = Field(ge=1, le=20)
+    price: int = Field(strict=True, ge=500, le=1000000)
+    cleaning_fee: int = Field(default=900, strict=True, ge=0, le=100000)
+    max_guests: int = Field(strict=True, ge=1, le=16)
+    bedrooms: int = Field(strict=True, ge=1, le=20)
+    beds: int = Field(strict=True, ge=1, le=30)
+    bathrooms: int = Field(strict=True, ge=1, le=20)
     photos: list[HttpUrl] = Field(min_length=1, max_length=12)
     amenities: list[str] = Field(max_length=12)
 
@@ -385,11 +397,14 @@ class ListingInput(BaseModel):
 
 
 def write_listing(db, body, user, id=None):
+    db.execute("BEGIN IMMEDIATE")
     data = body.model_dump(exclude={"photos", "amenities"})
     if id:
         row = listing_row(db, id)
         if row["host_id"] != user["id"]:
             raise HTTPException(403, "Only the owner can edit this listing.")
+        if db.execute("SELECT 1 FROM bookings WHERE listing_id=? AND status='confirmed' AND check_out>? AND guests>?", (id, str(booking_today()), body.max_guests)).fetchone():
+            raise HTTPException(409, "Guest capacity cannot be reduced below an upcoming reservation's guest count.")
         db.execute(
             "UPDATE listings SET " + ",".join(f"{k}=?" for k in data) + " WHERE id=?",
             list(data.values()) + [id],
@@ -440,7 +455,7 @@ def delete_listing(id: int, db: DB, user: User):
         raise HTTPException(403, "Only the owner can delete this listing.")
     if db.execute(
         "SELECT 1 FROM bookings WHERE listing_id=? AND status='confirmed' AND check_out>?",
-        (id, str(date.today())),
+        (id, str(booking_today())),
     ).fetchone():
         raise HTTPException(
             409,

@@ -1,4 +1,17 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700;750;800&display=swap");
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  transform: translateY(-160%);
+  z-index: 1000;
+  background: #222;
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 8px;
+}
+.skip-link:focus { transform: translateY(0); }
+.calendar-help { font-size: 12px; color: #717171; margin-top: 14px; }
 :root {
   --pink: #ff385c;
   --ink: #222;
@@ -576,8 +589,8 @@ small,
   margin-bottom: 29px;
 }
 .explore-heading h1 {
-  font-size: 31px;
-  letter-spacing: -1.1px;
+  font-size: 26px;
+  letter-spacing: -0.7px;
 }
 .explore-heading p {
   color: #777;
@@ -601,7 +614,7 @@ small,
 .results-dates {
   display: block;
   font-size: 11px;
-  color: #999;
+  color: #717171;
   margin-top: 6px;
 }
 .listing-grid {
@@ -672,8 +685,8 @@ small,
   top: 48%;
   background: #fffefc;
   border-radius: 50%;
-  width: 27px;
-  height: 27px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   opacity: 0;
@@ -717,7 +730,7 @@ small,
   line-height: 20px;
 }
 .card-title strong {
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -726,23 +739,23 @@ small,
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 .card-copy p {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 19px;
-  color: #848484;
+  color: #717171;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .card-price {
-  font-size: 12px;
+  font-size: 14px;
   margin-top: 7px;
 }
 .card-price strong {
-  font-size: 13px;
+  font-size: 14px;
 }
 .card-price span {
   color: #555;
@@ -1311,6 +1324,14 @@ footer {
 .gallery button:hover img {
   filter: brightness(0.9);
 }
+.gallery.gallery-count-1 { grid-template-columns: 1fr; }
+.gallery.gallery-count-2 { grid-template-columns: 1fr 1fr; }
+.gallery.gallery-count-2 > button:not(.show-photos) { grid-row: span 2; }
+.gallery.gallery-count-3 { grid-template-columns: 1.5fr 1fr; }
+.gallery.gallery-count-4 > button:nth-child(4) { grid-column: span 2; }
+.photo-link:focus-visible, .gallery > button:focus-visible { outline-offset: -4px; }
+.icon-button { width: 40px; height: 40px; }
+.heart-button { min-width: 40px; min-height: 40px; align-items: center; justify-content: center; top: 4px; right: 4px; }
 .gallery > .show-photos {
   position: absolute;
   right: 22px;
@@ -2144,7 +2165,7 @@ td p {
     gap: 30px 17px;
   }
   .card-title strong {
-    font-size: 12px;
+    font-size: 13px;
   }
   .detail-columns {
     grid-template-columns: 1.3fr 1fr;
@@ -2364,25 +2385,26 @@ td p {
     -webkit-box-orient: vertical;
   }
   .card-title > span {
-    font-size: 9px;
+    font-size: 12px;
     gap: 2px;
   }
   .card-title > span svg {
     width: 9px;
   }
   .card-copy p {
-    font-size: 10px;
-    line-height: 16px;
+    font-size: 12px;
+    line-height: 18px;
   }
   .card-price,
   .card-price strong {
-    font-size: 11px;
+    font-size: 13px;
   }
   .card-price {
     margin-top: 5px;
   }
   .photo-next {
-    display: none;
+    display: grid;
+    opacity: 0.9;
   }
   .photo-dots {
     bottom: 9px;

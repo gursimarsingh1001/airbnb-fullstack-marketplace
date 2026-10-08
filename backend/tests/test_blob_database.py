@@ -60,3 +60,33 @@ def test_failed_transaction_never_reaches_durable_store():
             db.execute("UPDATE listings SET price=999 WHERE id=4")
             raise ValueError('Abort request')
     assert store.content == original
+
+
+def test_schema_only_changes_are_published_and_read_only_commit_is_free():
+    store = ConditionalStore()
+    with connect_snapshot(store) as db:
+        db.execute("CREATE TABLE migration_test (id INTEGER PRIMARY KEY)")
+    assert store.version == 1
+    with connect_snapshot(store) as db:
+        db.execute("ALTER TABLE migration_test ADD COLUMN label TEXT")
+    assert store.version == 2
+    with connect_snapshot(store) as db:
+        assert "label" in {r[1] for r in db.execute("PRAGMA table_info(migration_test)")}
+    assert store.version == 2
+
+
+def test_additive_migration_keeps_legacy_snapshot_bookings():
+    from backend.migrations import migrate
+    store = ConditionalStore()
+    with connect_snapshot(store) as db:
+        db.executescript(SCHEMA)
+        seed(db)
+    with connect_snapshot(store) as db:
+        before = [tuple(row) for row in db.execute("SELECT id,total FROM bookings ORDER BY id")]
+        db.execute("BEGIN IMMEDIATE")
+        migrate(db)
+    with connect_snapshot(store) as db:
+        assert [tuple(row) for row in db.execute("SELECT id,total FROM bookings ORDER BY id")] == before
+        assert "idempotency_key" in {r[1] for r in db.execute("PRAGMA table_info(bookings)")}
+        migrate(db)
+    assert store.version == 2
