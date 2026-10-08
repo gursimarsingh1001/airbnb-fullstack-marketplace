@@ -391,6 +391,14 @@ export default function Marketplace() {
     (filters.type ? 1 : 0) +
     filters.amenities.length;
   const isExplore = route === "explore";
+  const activeFilters: { key: string; label: string; remove: () => void }[] = [];
+  if (category) activeFilters.push({ key: "category", label: category, remove: () => setCategory("") });
+  if (search.q) activeFilters.push({ key: "location", label: search.q, remove: () => { setQ(""); setSearch((s) => ({ ...s, q: "" })); } });
+  if (search.start) activeFilters.push({ key: "dates", label: `${prettyDate(search.start)} – ${prettyDate(search.end)}`, remove: () => { setStart(""); setEnd(""); setSearch((s) => ({ ...s, start: "", end: "" })); } });
+  if (search.guests > 1) activeFilters.push({ key: "guests", label: `${search.guests} guests`, remove: () => { setGuests(1); setSearch((s) => ({ ...s, guests: 1 })); } });
+  if (filters.min > 0 || filters.max < 1000000) activeFilters.push({ key: "price", label: filters.max === 1000000 ? `From ${money(filters.min)} / night` : `${money(filters.min)} – ${money(filters.max)} / night`, remove: () => setFilters((f) => ({ ...f, min: 0, max: 1000000 })) });
+  if (filters.type) activeFilters.push({ key: "type", label: filters.type, remove: () => setFilters((f) => ({ ...f, type: "" })) });
+  filters.amenities.forEach((amenity) => activeFilters.push({ key: `amenity-${amenity}`, label: amenity, remove: () => setFilters((f) => ({ ...f, amenities: f.amenities.filter((a) => a !== amenity) })) }));
   const savedIds = wishlist.map((h) => h.id);
   const cards = (items: Listing[]) =>
     items.map((h) => (
@@ -694,18 +702,14 @@ export default function Marketplace() {
                 </label>
               </div>
             </div>
-            {search.q || search.start || filterCount || category || search.guests > 1 ? (
-              <div className="active-filters">
-                <span>
-                  {search.q || "Anywhere"} ·{" "}
-                  {search.start
-                    ? prettyDate(search.start) + " – " + prettyDate(search.end)
-                    : "Any week"}{" "}
-                  · {search.guests} guest{search.guests > 1 ? "s" : ""}
-                </span>
-                <button onClick={clear}>
-                  Clear all <X size={14} />
-                </button>
+            {activeFilters.length > 0 ? (
+              <div className="active-filters" role="group" aria-label="Active filters">
+                {activeFilters.map((filter) => (
+                  <button key={filter.key} className="filter-chip" aria-label={`Remove ${filter.label} filter`} onClick={() => { filter.remove(); setPage(1); }}>
+                    {filter.label} <X size={14} aria-hidden="true" />
+                  </button>
+                ))}
+                {activeFilters.length > 1 && <button className="clear-filters" onClick={clear}>Clear all filters</button>}
               </div>
             ) : null}
             {loading ? (

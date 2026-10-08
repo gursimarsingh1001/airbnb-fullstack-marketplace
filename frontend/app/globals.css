@@ -800,8 +800,9 @@ small,
 }
 .active-filters {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 20px;
+  gap: 8px;
   margin-bottom: 25px;
   font-size: 13px;
 }
@@ -818,6 +819,19 @@ small,
   font-size: 12px;
   text-decoration: underline;
 }
+.active-filters .filter-chip {
+  padding: 10px 14px;
+  min-height: 44px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 24px;
+  background: var(--paper);
+  color: inherit;
+  text-decoration: none;
+  gap: 9px;
+  font-size: 12px;
+}
+.active-filters .filter-chip:hover { border-color: currentColor; }
+.active-filters .clear-filters { min-height: 44px; padding: 8px; font-size: 12px; }
 .explore-more {
   text-align: center;
   margin: 48px 0 14px;
