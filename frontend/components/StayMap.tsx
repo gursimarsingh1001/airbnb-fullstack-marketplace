@@ -41,7 +41,15 @@ export default function StayMap({ homes, onOpen, compact = false }: {
     let cleanup = () => {};
     import("leaflet").then((L) => {
       if (disposed || !container.current) return;
-      const instance = L.map(container.current, { zoomControl: false, scrollWheelZoom: true, minZoom: 2, maxZoom: 18 });
+      // OSM tiles stop at the Web Mercator world edge. Keep the entire viewport
+      // inside it, including when zoomed out or resized to a wider screen.
+      const world = L.latLngBounds([[-85.0511287798066, -180], [85.0511287798066, 180]]);
+      // Keep the wrapped tile layer larger than the viewport even on wide maps.
+      const minimumZoom = () => Math.max(3, Math.ceil(Math.log2(Math.max(container.current?.clientWidth || 256, container.current?.clientHeight || 256) / 256)));
+      const instance = L.map(container.current, {
+        zoomControl: false, scrollWheelZoom: true, minZoom: minimumZoom(), maxZoom: 18,
+        maxBounds: world, maxBoundsViscosity: 1,
+      });
       map.current = instance;
       instance.attributionControl.setPrefix(false);
       const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -89,7 +97,11 @@ export default function StayMap({ homes, onOpen, compact = false }: {
       };
       renderPins();
       instance.on("zoomend", renderPins);
-      const observer = new ResizeObserver(() => { instance.invalidateSize({ pan: false }); });
+      const observer = new ResizeObserver(() => {
+        instance.setMinZoom(minimumZoom());
+        instance.invalidateSize({ pan: false });
+        instance.panInsideBounds(world, { animate: false });
+      });
       observer.observe(container.current);
       cleanup = () => { window.clearTimeout(timeout); observer.disconnect(); pins.current.clear(); instance.remove(); map.current = null; };
     }).catch(() => { if (!disposed) setStatus("error"); });
