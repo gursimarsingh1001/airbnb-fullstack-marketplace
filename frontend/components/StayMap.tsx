@@ -47,7 +47,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
       // Keep the wrapped tile layer larger than the viewport even on wide maps.
       const minimumZoom = () => Math.max(3, Math.ceil(Math.log2(Math.max(container.current?.clientWidth || 256, container.current?.clientHeight || 256) / 256)));
       const instance = L.map(container.current, {
-        zoomControl: false, scrollWheelZoom: true, minZoom: minimumZoom(), maxZoom: 18,
+        zoomControl: false, scrollWheelZoom: true, inertia: false, minZoom: minimumZoom(), maxZoom: 18,
         maxBounds: world, maxBoundsViscosity: 1,
       });
       map.current = instance;
