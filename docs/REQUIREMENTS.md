@@ -1,6 +1,6 @@
 # Assignment requirement checklist
 
-Audit date: **8 October 2026**. “Implemented” describes source behavior; the verification column says what was actually exercised. Evidence references the local production export served by FastAPI unless it explicitly says otherwise.
+Audit date: **9 October 2026**. “Implemented” describes source behavior; the verification column says what was actually exercised. Evidence references the local production export served by FastAPI unless it explicitly says otherwise.
 
 | Requirement | Status | Verification evidence |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ Audit date: **8 October 2026**. “Implemented” describes source behavior; the
 | Lint, TypeScript, frontend/backend tests, production build | Implemented and verified | ESLint pass; `tsc --noEmit` pass; 8 frontend tests pass; 62 backend tests pass; Next production static build pass |
 | README/setup/schema/API/config/deployment documentation | Implemented and reviewed | Commands match package/workflow; isolated env example and versioned schema, quote/book examples, ER diagram, pricing/race/deploy policies included |
 | Reference comparison and original UI | Implemented and visually reviewed | Accessible Airbnb public homepage viewed; local 768 and 390 layouts reviewed against photo grid, compact search, category scroller, card proportions, typography, palette, roundness, spacing |
-| Free public repo/deployment | Implemented and verified | Source commit `84548fb` pushed to the existing public GitHub repository; Vercel production build reached `READY` on free Hobby. Live explore rendered homes and the Cabins search returned the expected two homes. A direct API URL open was blocked by the browser inspection tool; the app's own same-origin API requests and results succeeded. |
+| Free public repo/deployment | Implemented and verified | Map fix commit `e64934e` is pushed to the existing public GitHub repository; Vercel deployment `dpl_42rZUix7A3ynMdXRL6c7QY2S5mk1` reached `READY` and aliased the existing public URL. The live explore view rendered seeded homes. |
 
 ### Permitted or optional exclusions
 

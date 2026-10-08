@@ -2,7 +2,10 @@
 
 ## Automated checks
 
-- `python -m pytest backend/tests -q`: **14 passed**.
+- `python -m pytest backend/tests -q`: **62 passed** (9 October 2026).
+- `npm test`: **8 passed**.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed with zero warnings.
 - `npm run build`: Next.js production compilation, TypeScript validation, and static export passed.
 - Dependency installation: 0 known vulnerabilities reported by npm at installation time.
 
@@ -37,4 +40,11 @@ The automatic test database is isolated in a temporary directory. Browser verifi
 - A second API request for the same dates returned **409 Conflict**.
 - Live host API creation, price update, a fresh read, and soft-delete passed. The test listing was removed; the 20 seed homes remain.
 - Mobile layout showed no horizontal document overflow. Desktop preview is saved in `live-demo.jpg`.
-- Final local backend suite: **14 passed**. Vercel production build passed compilation, TypeScript, and static export.
+- Final local backend suite: **62 passed**. Vercel production build passed compilation, TypeScript, and static export.
+
+## Map pan regression check (9 October 2026)
+
+- Reproduced the gray map edge after a rapid side-to-side drag on the deployed site. Leaflet's inertial glide carried the map beyond the OpenStreetMap tile world.
+- Disabled map inertia, constrained panning to the Web Mercator world, and set a viewport-aware minimum zoom (at least zoom 3).
+- Repeated rapid sideways drags on the live demo; all visible tiles loaded. Zooming out stopped at zoom 3 with all visible tiles loaded.
+- Pushed as commit `e64934e`; Vercel deployment `dpl_42rZUix7A3ynMdXRL6c7QY2S5mk1` reached `READY` at the existing public demo URL.
