@@ -41,7 +41,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
     let cleanup = () => {};
     import("leaflet").then((L) => {
       if (disposed || !container.current) return;
-      const instance = L.map(container.current, { zoomControl: false, scrollWheelZoom: false, minZoom: 2, maxZoom: 18 });
+      const instance = L.map(container.current, { zoomControl: false, scrollWheelZoom: true, minZoom: 2, maxZoom: 18 });
       map.current = instance;
       instance.attributionControl.setPrefix(false);
       const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
