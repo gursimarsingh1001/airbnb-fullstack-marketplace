@@ -11,13 +11,13 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 ## Features
 
 - Photo-first, responsive explore grid with category navigation, location/date/guest search, price/property/amenity filters, and pagination.
-- Detailed home views with five-photo galleries, amenities, host profiles, reviews, and a two-month availability calendar.
+- Detailed home views with five-photo galleries, amenities, host profiles, reviews, and a two-month availability calendar. Guests can review a confirmed stay after checkout.
 - Server-priced checkout, persisted reservations, atomic overlap protection, booking confirmation, Trips, and cancellation.
 - Per-profile persisted wishlists.
-- Host dashboard, reservations, and listing creation, editing, and deletion. Photos are supplied through URLs.
+- Host dashboard, reservations, and listing creation, editing, and deletion. Photos can be supplied through HTTPS URLs or uploaded as JPEG, PNG, or WebP to the connected private Vercel Blob store (3 MB per image).
 - Four selectable demo profiles, including three hosts with independently owned homes.
-- Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, and an interactive map with price pins and home previews.
-- Seed data: 20 homes, six users, 60 reviews, four upcoming bookings, and a saved home.
+- Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, persistent dark mode, and an interactive map with price pins and home previews.
+- Seed data: 20 homes, six users, 60 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
 
 ## Quick start
 
@@ -123,6 +123,7 @@ erDiagram
     users ||--o{ wishlists : saves
     listings ||--o{ photos : has
     listings ||--o{ bookings : receives
+    bookings o|--o| reviews : may_receive
     listings ||--o{ reviews : receives
     listings ||--o{ wishlists : saved_in
     listings ||--o{ listing_amenities : offers
@@ -137,7 +138,7 @@ erDiagram
 | `amenities` | Unique amenity name |
 | `listing_amenities` | Composite primary key `(listing_id, amenity_id)` |
 | `bookings` | Listing/user FKs, ISO dates, guests, **price snapshot**, fees, total, status; check-out after check-in |
-| `reviews` | Listing/user FKs, rating constrained to 1–5, comment, date |
+| `reviews` | Listing/user FKs, optional unique completed-booking FK for guest reviews, rating constrained to 1–5, comment, date |
 | `wishlists` | Composite primary key `(user_id, listing_id)` |
 
 Foreign keys are enabled on every connection. Indexes cover listing ownership, user bookings, and availability lookups. Local WAL mode and a 15-second busy timeout support concurrent readers and serialized writes. The cloud snapshot adapter uses DELETE journal mode so the uploaded file contains the entire committed state; ETag checks serialize publication across instances.
@@ -165,11 +166,14 @@ Interactive OpenAPI reference is available at `/docs` and schema at `/openapi.js
 | POST | `/api/bookings` | Confirm an atomic mock reservation |
 | GET | `/api/bookings` | Current profile's trips |
 | DELETE | `/api/bookings/{id}` | Cancel an owned future booking |
+| POST | `/api/bookings/{id}/review` | Review an owned, completed confirmed stay once; updates listing rating aggregation |
 | GET | `/api/wishlists` | Current profile's saved homes |
 | PUT / DELETE | `/api/wishlists/{id}` | Save / remove a home |
 | GET | `/api/host/dashboard` | Owned homes and their reservations |
 | POST | `/api/host/listings` | Create a home |
 | PUT / DELETE | `/api/host/listings/{id}` | Update / soft-delete an owned home |
+| POST | `/api/host/photos` | Upload a validated image to the connected private Blob store (host profile required) |
+| GET | `/api/photos/{key}` | Serve an uploaded image through the API without exposing the Blob token |
 
 Search parameters: `q`, `category`, `property_type`, `min_price`, `max_price`, `guests`, `amenities` (comma separated), `check_in`, `check_out`, `page`, `limit`.
 
@@ -220,8 +224,9 @@ Manual browser checks include date selection, checkout, persisted trips, host fo
 
 - Real payments, messaging, identity verification, experiences, and services are clearly marked demos or coming-soon surfaces.
 - No card details are collected. Cancellation is a full mock refund before check-in.
-- Photos use public Unsplash image URLs and require network access. Custom photo uploads are represented by URL entry, as permitted by the assignment.
+- Seed photos use public Unsplash URLs and require network access. Host uploads accept JPEG, PNG, and WebP files up to 3 MB and use the existing private Vercel Blob store; the API serves uploaded files through a same-origin proxy without exposing storage credentials. Local upload needs `BLOB_READ_WRITE_TOKEN` in the backend process; HTTPS URL entry remains available without it. Vercel Hobby Blob quotas are shared with the database snapshot, so this demo deliberately keeps uploads small. Tests use a mocked Blob HTTP client; real upload behavior depends on the connected store and remaining free quota.
 - Maps use Leaflet and OpenStreetMap tiles, with approximate seeded town coordinates. Explore shows the current results page, groups nearby price pins, supports country selection, and opens a photo preview before navigating to a home. Detail pages show the surrounding area. Host-created homes without coordinates show their location text instead of an invented pin. Tile loading needs internet access; the listing list remains usable if it fails. No API key, account, paid plan, or user geolocation is needed. Visible attribution is retained and tiles use normal browser caching; see the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
-- Reviews and Superhost status are seeded, and ratings are aggregated from seeded reviews. Guest review submission is not implemented (optional bonus).
+- Seed reviews contribute to live per-listing average ratings, and the Superhost flag is seeded and shown on home cards/details. A demo completed trip is available in Trips; each completed confirmed stay may be reviewed once by the booking guest.
+- Dark mode is a persistent browser preference in the account menu. The responsive layout is designed for phone, tablet, and desktop widths.
 - Responsive layout supports mobile, tablet, and desktop. Dates are property-style calendar dates rather than timezone-adjusted timestamps.
 - The visual implementation is written from scratch, inspired by Airbnb's layout patterns. No Airbnb source code or existing clone repository was copied.

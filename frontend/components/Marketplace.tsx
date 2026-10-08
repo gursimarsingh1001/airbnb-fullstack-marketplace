@@ -17,6 +17,8 @@ import {
   Check,
   CalendarDays,
   ArrowLeft,
+  Moon,
+  Sun,
 } from "lucide-react";
 import {
   api,
@@ -62,6 +64,7 @@ const defaultFilters = {
 type Filters = typeof defaultFilters;
 type SearchState = { q: string; start: string; end: string; guests: number };
 const searchStorageKey = "airbnb-search-v1";
+const themeStorageKey = "airbnb-theme-v1";
 const emptySearch: SearchState = { q: "", start: "", end: "", guests: 1 };
 function validDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
@@ -72,6 +75,7 @@ export default function Marketplace() {
     [ready, setReady] = useState(false),
     [users, setUsers] = useState<User[]>([]),
     [route, setRoute] = useState("explore"),
+    [theme, setTheme] = useState<"light" | "dark">("light"),
     [menu, setMenu] = useState(false),
     [modal, setModal] = useState(""),
     [toast, setToast] = useState(""),
@@ -101,6 +105,10 @@ export default function Marketplace() {
     [trips, setTrips] = useState<Booking[]>([]),
     [tripsLoading, setTripsLoading] = useState(true),
     [tripsError, setTripsError] = useState(""),
+    [reviewing, setReviewing] = useState<Booking | null>(null),
+    [reviewRating, setReviewRating] = useState(5),
+    [reviewComment, setReviewComment] = useState(""),
+    [reviewBusy, setReviewBusy] = useState(false),
     [cancel, setCancel] = useState<Booking | null>(null),
     [busy, setBusy] = useState(false),
     [refresh, setRefresh] = useState(0),
@@ -108,7 +116,17 @@ export default function Marketplace() {
   const currentUser = useRef(user.id);
   const pendingSaves = useRef(new Set<string>());
   const cancelling = useRef(false);
+  const reviewInFlight = useRef(false);
   const notify = useCallback((s: string) => setToast(s), []);
+  useEffect(() => {
+    let saved: "light" | "dark" = "light";
+    try {
+      const value = localStorage.getItem(themeStorageKey);
+      if (value === "light" || value === "dark") saved = value;
+    } catch { /* The theme toggle still works for this visit. */ }
+    setTheme(saved);
+    document.documentElement.dataset.theme = saved;
+  }, []);
   const navigate = (target: string) => {
     window.location.hash = target;
     setMenu(false);
@@ -288,6 +306,7 @@ export default function Marketplace() {
     setUser(u);
     if (u.id !== user.id) { setWishlist([]); setTrips([]); setWishlistLoading(true); setTripsLoading(true); }
     setCancel(null);
+    setReviewing(null);
     try { localStorage.setItem("airbnb-demo-user", String(u.id)); } catch { /* Keep the profile for this session. */ }
     setModal("");
     setMenu(false);
@@ -313,6 +332,27 @@ export default function Marketplace() {
     } finally {
       cancelling.current = false;
       setBusy(false);
+    }
+  }
+  async function submitReview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reviewing || reviewInFlight.current) return;
+    reviewInFlight.current = true;
+    setReviewBusy(true);
+    try {
+      await api(`/bookings/${reviewing.id}/review`, user.id, "POST", {
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      });
+      notify("Thanks for sharing your stay with other guests.");
+      setReviewing(null);
+      setReviewComment("");
+      setRefresh((value) => value + 1);
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      reviewInFlight.current = false;
+      setReviewBusy(false);
     }
   }
   const listingId = /^listing\/[1-9]\d*$/.test(route)
@@ -432,6 +472,20 @@ export default function Marketplace() {
                     </button>
                     <button onClick={host}>
                       <Home size={18} /> Hosting dashboard
+                    </button>
+                    <button
+                      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                      aria-pressed={theme === "dark"}
+                      onClick={() => {
+                        const next = theme === "dark" ? "light" : "dark";
+                        setTheme(next);
+                        document.documentElement.dataset.theme = next;
+                        try { localStorage.setItem(themeStorageKey, next); } catch { /* Keep the selected theme for this visit. */ }
+                        setMenu(false);
+                      }}
+                    >
+                      {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                      {theme === "dark" ? "Light mode" : "Dark mode"}
                     </button>
                     <hr />
                     <button
@@ -779,6 +833,19 @@ export default function Marketplace() {
                         >
                           Cancel trip
                         </button>
+                      )}
+                      {b.status === "confirmed" && b.check_out <= today() && (
+                        b.reviewed ? (
+                          <span className="review-submitted" role="status">Review shared</span>
+                        ) : (
+                          <button className="text-button" onClick={() => {
+                            setReviewing(b);
+                            setReviewRating(5);
+                            setReviewComment("");
+                          }}>
+                            Leave a review
+                          </button>
+                        )
                       )}
                     </div>
                     <small className="muted">
@@ -1185,6 +1252,29 @@ export default function Marketplace() {
               </>
             )}
           </div>
+        </Modal>
+      )}
+      {reviewing && (
+        <Modal title="Share your stay" onClose={() => { if (!reviewBusy) setReviewing(null); }}>
+          <form className="modal-body review-form" onSubmit={submitReview}>
+            <h2>{reviewing.listing.title}</h2>
+            <p className="muted">Your review helps future guests know what to expect.</p>
+            <label>
+              Your rating
+              <select aria-label="Your rating" value={reviewRating} onChange={(event) => setReviewRating(Number(event.target.value))}>
+                {[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} star{value === 1 ? "" : "s"}</option>)}
+              </select>
+            </label>
+            <label>
+              Your review
+              <textarea aria-label="Your review" required minLength={10} maxLength={1000} rows={5} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="What made your stay memorable?" />
+              <small className="muted">10–1,000 characters</small>
+            </label>
+            <div className="form-actions">
+              <button type="button" className="text-button" disabled={reviewBusy} onClick={() => setReviewing(null)}>Cancel</button>
+              <button className="primary-button" disabled={reviewBusy}>{reviewBusy ? "Sharing…" : "Submit review"}</button>
+            </div>
+          </form>
         </Modal>
       )}
       {cancel && (

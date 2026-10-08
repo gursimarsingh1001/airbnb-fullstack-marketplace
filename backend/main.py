@@ -6,14 +6,17 @@ import os
 import sqlite3
 import hashlib
 import json
+import base64
+import binascii
+import re
 
-from fastapi import FastAPI, Depends, Header, HTTPException, Query
+from fastapi import FastAPI, Depends, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from . import database
-from .blob_database import SnapshotConflict, SnapshotUnavailable
+from .blob_database import BlobStore, IMAGE_TYPES, MAX_IMAGE_BYTES, SnapshotConflict, SnapshotUnavailable
 from .booking_rules import booking_today, price_quote, stored_quote
 
 
@@ -203,7 +206,7 @@ def listing(id: int, db: DB):
     result["reviews"] = [
         dict(r)
         for r in db.execute(
-            "SELECT r.*,u.name,u.avatar FROM reviews r JOIN users u ON u.id=r.user_id WHERE listing_id=? ORDER BY created_at DESC",
+            "SELECT r.id,r.rating,r.comment,r.created_at,u.name,u.avatar FROM reviews r JOIN users u ON u.id=r.user_id WHERE listing_id=? ORDER BY created_at DESC",
             (id,),
         )
     ]
@@ -215,6 +218,52 @@ def listing(id: int, db: DB):
         )
     ]
     return result
+
+
+class PhotoUploadInput(BaseModel):
+    content_type: str = Field(pattern=r"^image/(jpeg|png|webp)$")
+    content_base64: str = Field(min_length=1, max_length=4_194_304)
+
+
+def image_type(content):
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+@app.post("/api/host/photos", status_code=201)
+def upload_host_photo(body: PhotoUploadInput, request: Request, user: User):
+    require_host(user)
+    try:
+        content = base64.b64decode(body.content_base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "The uploaded image data is invalid.")
+    if not content or len(content) > MAX_IMAGE_BYTES:
+        raise HTTPException(413, "Images must be 3 MB or smaller.")
+    detected = image_type(content)
+    if not detected or detected != body.content_type:
+        raise HTTPException(415, "Choose a valid JPEG, PNG, or WebP image.")
+    key = BlobStore().put_image(content, detected)
+    url = str(request.base_url).rstrip("/") + "/api/photos/" + key
+    return {"url": url, "content_type": detected, "size": len(content)}
+
+
+@app.get("/api/photos/{key}")
+def hosted_photo(key: str):
+    if not re.fullmatch(r"[a-f0-9]{32}\.(jpg|png|webp)", key):
+        raise HTTPException(404, "Image not found.")
+    content_type = next(mime for mime, ext in IMAGE_TYPES.items() if key.endswith("." + ext))
+    content = BlobStore().get_image(key)
+    if content is None:
+        raise HTTPException(404, "Image not found.")
+    return Response(content, media_type=content_type, headers={
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 class BookingInput(BaseModel):
@@ -288,6 +337,7 @@ def booking_list(db, rows):
         {
             **{k: r[k] for k in r.keys() if k not in ("idempotency_key", "request_fingerprint")},
             **stored_quote(r),
+            "reviewed": bool(db.execute("SELECT 1 FROM reviews WHERE booking_id=?", (r["id"],)).fetchone()),
             "listing": serialize_listing(db, listing_row(db, r["listing_id"], True)),
             "guest_name": db.execute(
                 "SELECT name FROM users WHERE id=?", (r["user_id"],)
@@ -306,6 +356,40 @@ def trips(db: DB, user: User):
             (user["id"],),
         ).fetchall(),
     )
+
+
+class ReviewInput(BaseModel):
+    rating: int = Field(strict=True, ge=1, le=5)
+    comment: str = Field(min_length=10, max_length=1000)
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def trim_comment(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+@app.post("/api/bookings/{id}/review", status_code=201)
+def leave_review(id: int, body: ReviewInput, db: DB, user: User):
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        booking = db.execute(
+            "SELECT * FROM bookings WHERE id=? AND user_id=?", (id, user["id"])
+        ).fetchone()
+        if not booking:
+            raise HTTPException(404, "Completed reservation not found.")
+        if booking["status"] != "confirmed" or booking["check_out"] > str(booking_today()):
+            raise HTTPException(422, "You can leave a review after your confirmed stay is complete.")
+        if db.execute("SELECT 1 FROM reviews WHERE booking_id=?", (id,)).fetchone():
+            raise HTTPException(409, "You have already reviewed this stay.")
+        cursor = db.execute(
+            "INSERT INTO reviews(listing_id,user_id,booking_id,rating,comment) VALUES(?,?,?,?,?)",
+            (booking["listing_id"], user["id"], id, body.rating, body.comment),
+        )
+        db.commit()
+        return {"id": cursor.lastrowid, "booking_id": id, "rating": body.rating, "comment": body.comment}
+    except Exception:
+        db.rollback()
+        raise
 
 
 @app.delete("/api/bookings/{id}")

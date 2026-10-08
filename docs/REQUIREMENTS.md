@@ -30,12 +30,18 @@ Audit date: **9 October 2026**. “Implemented” describes source behavior; the
 | Clear current demo user and guest/host behavior | Implemented; mock-auth limitation | UI provides guest and host personas; API scopes by `X-Demo-User` ownership, but identities are intentionally public and spoofable |
 | Clearly mocked checkout; no card collection | Implemented and verified | Checkout marked demo, no credential inputs; browser completed mock reservation |
 | Desktop/tablet/mobile responsive layout | Implemented and partially verified | Screenshots at 390 px and 768 px inspected; desktop screenshot reviewed; no overflow measured at phone/tablet. 1440px numeric overflow audit remains unverified |
+| Interactive map with listing pins | Implemented and verified | Leaflet map shows approximate listing pins and home previews; production drag/zoom checks after the map-bounds fix showed tiles remain in view |
+| Review after a completed stay | Implemented and verified | Guest submitted the seeded completed-trip review through Trips in the local browser; UI changed to “Review shared”; API tests verify ownership, one-review rule, rating aggregation, and trigger enforcement |
+| Superhost badges and rating aggregation | Implemented and verified | Seeded Superhost labels display on cards/details; listing responses aggregate review average/count, and the review regression test confirms the aggregate changes after a new review |
+| Image upload to cloud storage | Implemented; integration partially verified | Host photo upload validates image bytes/types and stores privately through Vercel Blob; API/storage tests mock the Blob service and verify upload/fetch paths. A real upload was not sent to the shared production store |
+| Persistent dark mode | Implemented and verified | Toggled dark mode in the local browser, saw the dark palette, then refreshed and confirmed the preference remained active |
+| Responsive mobile/tablet/desktop layouts | Implemented and partially verified | Prior browser audit inspected 390 px, 768 px, and wide desktop views; this bonus pass confirmed the dark palette on the local explore page |
 | Keyboard labels, visible focus, modal focus | Partially verified | Modal Escape/focus trap keyboard test performed; labels and buttons reviewed in accessibility tree; no screen reader or automated WCAG/contrast audit |
-| Lint, TypeScript, frontend/backend tests, production build | Implemented and verified | ESLint pass; `tsc --noEmit` pass; 8 frontend tests pass; 62 backend tests pass; Next production static build pass |
+| Lint, TypeScript, frontend/backend tests, production build | Implemented and verified | ESLint pass; `tsc --noEmit` pass; 8 frontend tests pass; 68 backend tests pass; Next production static build pass |
 | README/setup/schema/API/config/deployment documentation | Implemented and reviewed | Commands match package/workflow; isolated env example and versioned schema, quote/book examples, ER diagram, pricing/race/deploy policies included |
 | Reference comparison and original UI | Implemented and visually reviewed | Accessible Airbnb public homepage viewed; local 768 and 390 layouts reviewed against photo grid, compact search, category scroller, card proportions, typography, palette, roundness, spacing |
 | Free public repo/deployment | Implemented and verified | Map fix commit `e64934e` is pushed to the existing public GitHub repository; Vercel deployment `dpl_42rZUix7A3ynMdXRL6c7QY2S5mk1` reached `READY` and aliased the existing public URL. The live explore view rendered seeded homes. |
 
 ### Permitted or optional exclusions
 
-Real payments, messaging, identity verification, live map, social auth, cloud image upload, and guest-submitted reviews are mocked, illustrative, or unimplemented as allowed. Listing photos accept validated HTTPS URLs.
+Real payments, messaging, identity verification, live pricing pins, and social authentication remain mocked or unimplemented as permitted. The map uses approximate seeded coordinates and OpenStreetMap tiles; cloud photo storage uses the connected Vercel Blob quota.

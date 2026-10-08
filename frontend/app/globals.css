@@ -2793,3 +2793,214 @@ td p {
     padding-bottom: 15px;
   }
 }
+
+.photo-upload-control {
+  padding: 14px;
+  border: 1px dashed #aaa;
+  border-radius: 12px;
+  background: var(--soft);
+}
+.photo-upload-control input[type="file"] {
+  max-width: 100%;
+}
+.review-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.review-form select,
+.review-form textarea {
+  width: 100%;
+  border: 1px solid #bbb;
+  border-radius: 9px;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: var(--paper);
+  font-weight: 400;
+}
+.review-submitted {
+  align-self: center;
+  color: #397653;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #f2f2f2;
+  --muted: #b2b2b2;
+  --line: #383838;
+  --paper: #151515;
+  --soft: #202020;
+  --surface: #1e1e1e;
+  --surface-hover: #292929;
+  --border-strong: #505050;
+}
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .site-header,
+:root[data-theme="dark"] .category-bar,
+:root[data-theme="dark"] footer {
+  color: var(--ink);
+  background: var(--paper);
+}
+:root[data-theme="dark"] .account-menu,
+:root[data-theme="dark"] .search-bar,
+:root[data-theme="dark"] .filter-button,
+:root[data-theme="dark"] .active-filters > span,
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .modal-heading,
+:root[data-theme="dark"] .toast,
+:root[data-theme="dark"] .booking-card,
+:root[data-theme="dark"] .host-card,
+:root[data-theme="dark"] .trip-card,
+:root[data-theme="dark"] .stats-grid > div,
+:root[data-theme="dark"] .table-wrap,
+:root[data-theme="dark"] .profile-options > button,
+:root[data-theme="dark"] .map-results-heading,
+:root[data-theme="dark"] .map-result,
+:root[data-theme="dark"] .map-preview,
+:root[data-theme="dark"] .map-status,
+:root[data-theme="dark"] .map-controls,
+:root[data-theme="dark"] .map-controls button {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .search-segment:hover,
+:root[data-theme="dark"] .search-destination:focus-within,
+:root[data-theme="dark"] .account-menu > button:hover,
+:root[data-theme="dark"] .map-result:hover,
+:root[data-theme="dark"] .map-result.selected,
+:root[data-theme="dark"] .profile-options > button:hover,
+:root[data-theme="dark"] .icon-button:hover,
+:root[data-theme="dark"] .host-link:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+:root[data-theme="dark"] .search-destination input,
+:root[data-theme="dark"] .search-segment .has-value,
+:root[data-theme="dark"] .primary-nav > button.active,
+:root[data-theme="dark"] .category.active,
+:root[data-theme="dark"] .workspace-tabs > button.active,
+:root[data-theme="dark"] .map-unavailable h3 {
+  color: var(--ink);
+}
+:root[data-theme="dark"] .primary-nav > button,
+:root[data-theme="dark"] .category,
+:root[data-theme="dark"] .card-copy p,
+:root[data-theme="dark"] .card-price span,
+:root[data-theme="dark"] .menu-profile small,
+:root[data-theme="dark"] .footer-destinations button span,
+:root[data-theme="dark"] .footer-bottom,
+:root[data-theme="dark"] .footer-locale,
+:root[data-theme="dark"] .map-result-copy > span:not(.map-night),
+:root[data-theme="dark"] .map-preview-location,
+:root[data-theme="dark"] .map-missing,
+:root[data-theme="dark"] .map-unavailable,
+:root[data-theme="dark"] .calendar-help,
+:root[data-theme="dark"] .info-modal p,
+:root[data-theme="dark"] .trip-copy > p,
+:root[data-theme="dark"] .trip-details svg,
+:root[data-theme="dark"] .stats-grid span,
+:root[data-theme="dark"] .host-card-bottom small,
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] td p {
+  color: var(--muted);
+}
+:root[data-theme="dark"] .search-divider,
+:root[data-theme="dark"] .workspace-tabs,
+:root[data-theme="dark"] .workspace-tabs > button.active:after,
+:root[data-theme="dark"] .calendar-grid > button.in-range,
+:root[data-theme="dark"] .table-wrap th,
+:root[data-theme="dark"] .table-wrap td,
+:root[data-theme="dark"] .host-card-bottom {
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .search-divider,
+:root[data-theme="dark"] .calendar-grid > button.in-range,
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] .workspace-tabs span,
+:root[data-theme="dark"] .skeleton-card > span {
+  background: var(--surface-hover);
+}
+:root[data-theme="dark"] .search-bar,
+:root[data-theme="dark"] .profile-button,
+:root[data-theme="dark"] .filter-button,
+:root[data-theme="dark"] .circle-button,
+:root[data-theme="dark"] .map-region,
+:root[data-theme="dark"] .stats-grid > div,
+:root[data-theme="dark"] .host-card,
+:root[data-theme="dark"] .trip-card,
+:root[data-theme="dark"] .table-wrap,
+:root[data-theme="dark"] .account-menu,
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .search-destination input,
+:root[data-theme="dark"] .form-grid input,
+:root[data-theme="dark"] .listing-form input:not([type="checkbox"]),
+:root[data-theme="dark"] .listing-form textarea,
+:root[data-theme="dark"] .listing-form select,
+:root[data-theme="dark"] .review-form select,
+:root[data-theme="dark"] .review-form textarea {
+  border-color: var(--border-strong);
+  color: var(--ink);
+  background-color: var(--surface);
+}
+:root[data-theme="dark"] .modal-heading,
+:root[data-theme="dark"] .form-actions,
+:root[data-theme="dark"] .filter-modal section + section,
+:root[data-theme="dark"] .host-card-bottom,
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] td {
+  border-color: var(--line);
+}
+:root[data-theme="dark"] .dark-button,
+:root[data-theme="dark"] .map-toggle,
+:root[data-theme="dark"] .calendar-grid > button.selected {
+  color: #151515;
+  background: #f1f1f1;
+}
+:root[data-theme="dark"] .calendar-grid > button:hover,
+:root[data-theme="dark"] button:focus-visible,
+:root[data-theme="dark"] a:focus-visible {
+  outline-color: #ff8197;
+}
+:root[data-theme="dark"] .map-canvas .stay-price-pin {
+  background: #f1f1f1;
+  color: #151515;
+  border-color: #555;
+}
+:root[data-theme="dark"] .map-canvas .stay-price-pin:hover,
+:root[data-theme="dark"] .map-canvas .stay-price-pin.selected {
+  background: #222;
+  color: #fff;
+  border-color: #222;
+}
+:root[data-theme="dark"] .map-caption,
+:root[data-theme="dark"] .map-canvas .leaflet-control-attribution {
+  color: #222;
+  background: #fffffff2;
+}
+:root[data-theme="dark"] .map-controls button {
+  color: #222;
+}
+:root[data-theme="dark"] .status {
+  color: #a4dfb9;
+  background: #20382a;
+}
+:root[data-theme="dark"] .review-submitted {
+  color: #a4dfb9;
+}
+:root[data-theme="dark"] .status.cancelled {
+  color: var(--muted);
+  background: var(--surface-hover);
+}
+:root[data-theme="dark"] .skeleton-card > div {
+  background: linear-gradient(100deg, #252525, #303030, #252525);
+}
+:root[data-theme="dark"] .photo-upload-control {
+  border-color: #666;
+  background: var(--surface);
+}

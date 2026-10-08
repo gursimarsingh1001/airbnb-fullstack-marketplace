@@ -73,10 +73,12 @@ export default function Host({
     [edit, setEdit] = useState<number | null | false>(false),
     [draft, setDraft] = useState<Draft>(blank),
     [photos, setPhotos] = useState(""),
+    [uploading, setUploading] = useState(false),
     [saving, setSaving] = useState(false),
     [deleting, setDeleting] = useState<Listing | null>(null),
     [formError, setFormError] = useState("");
   const inFlight = useRef(false);
+  const uploadInFlight = useRef(false);
   const loadVersion = useRef(0);
   const load = useCallback(async (signal?: AbortSignal) => {
     const version = ++loadVersion.current;
@@ -104,12 +106,56 @@ export default function Host({
     setEdit(h?.id ?? null);
     setFormError("");
   }
+  async function uploadPhotos(files: FileList | null) {
+    if (!files?.length || uploadInFlight.current) return;
+    const selected = Array.from(files);
+    const current = photos.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    if (current.length + selected.length > 12) {
+      setFormError("A listing can have up to 12 photos.");
+      return;
+    }
+    if (selected.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size < 1 || file.size > 3 * 1024 * 1024)) {
+      setFormError("Choose JPEG, PNG, or WebP images that are each 3 MB or smaller.");
+      return;
+    }
+    uploadInFlight.current = true;
+    setUploading(true);
+    setFormError("");
+    try {
+      for (const file of selected) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read this image."));
+          reader.onerror = () => reject(new Error("Could not read this image."));
+          reader.readAsDataURL(file);
+        });
+        const contentBase64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+        const result = await api<{ url: string }>("/host/photos", user.id, "POST", {
+          content_type: file.type,
+          content_base64: contentBase64,
+        });
+        setPhotos((previous) => [previous.trim(), result.url].filter(Boolean).join("\n"));
+      }
+      notify(`${selected.length} photo${selected.length === 1 ? "" : "s"} uploaded to your demo storage.`);
+    } catch (e) {
+      setFormError((e as Error).message);
+    } finally {
+      uploadInFlight.current = false;
+      setUploading(false);
+    }
+  }
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (inFlight.current) return;
+    if (inFlight.current || uploading) return;
     const photoUrls = photos.split("\n").map((s) => s.trim()).filter(Boolean);
     if (!photoUrls.length || photoUrls.length > 12 || photoUrls.some((value) => {
-      try { const url = new URL(value); return url.protocol !== "https:" || !!url.username || !!url.password; } catch { return true; }
+      try {
+        const url = new URL(value);
+        const localUploadedPhoto = url.protocol === "http:" &&
+          ["localhost", "127.0.0.1"].includes(url.hostname) &&
+          /^\/api\/photos\/[a-f0-9]{32}\.(jpg|png|webp)$/.test(url.pathname);
+        return (url.protocol !== "https:" && !localUploadedPhoto) || !!url.username || !!url.password;
+      } catch { return true; }
     })) { setFormError("Add 1–12 valid HTTPS image URLs, one per line, without usernames or passwords."); return; }
     if (draft.title.trim().length < 5 || draft.description.trim().length < 30 || draft.location.trim().length < 2 || draft.country.trim().length < 2) {
       setFormError("Enter a title of at least 5 characters, description of at least 30, and a valid location and country."); return;
@@ -425,6 +471,20 @@ export default function Host({
                 is your cover.
               </small>
             </label>
+            <label className="photo-upload-control">
+              <span><ImagePlus size={16} /> Or upload photos</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={uploading || saving}
+                onChange={(event) => {
+                  void uploadPhotos(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+              <small className="muted">JPEG, PNG, or WebP · up to 3 MB each. Stored in the connected Vercel Blob store; URL photos still work without cloud storage.</small>
+            </label>
             <fieldset>
               <legend>What does your place offer?</legend>
               <div className="amenity-options">
@@ -460,12 +520,12 @@ export default function Host({
                 type="button"
                 className="text-button"
                 onClick={() => setEdit(false)}
-                disabled={saving}
+                disabled={saving || uploading}
               >
                 Cancel
               </button>
-              <button className="primary-button" disabled={saving}>
-                {saving ? "Saving…" : edit ? "Save changes" : "Publish listing"}
+              <button className="primary-button" disabled={saving || uploading}>
+                {uploading ? "Uploading photos…" : saving ? "Saving…" : edit ? "Save changes" : "Publish listing"}
                 <ArrowUpRight size={18} />
               </button>
             </div>

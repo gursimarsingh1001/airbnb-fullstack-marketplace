@@ -19,6 +19,8 @@ import httpx
 
 PATHNAME = "airbnb/database.sqlite"
 MAX_DATABASE_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+IMAGE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 
 class SnapshotConflict(Exception):
@@ -40,6 +42,62 @@ class BlobStore:
             raise SnapshotUnavailable("Invalid database storage configuration.")
         self.store_id = parts[3]
         self.url = f"https://{self.store_id.lower()}.private.blob.vercel-storage.com/{PATHNAME}"
+
+    def put_image(self, content, content_type):
+        if len(content) > MAX_IMAGE_BYTES or content_type not in IMAGE_TYPES:
+            raise SnapshotUnavailable("Image exceeds the demo upload limit or has an unsupported type.")
+        key = f"{uuid4().hex}.{IMAGE_TYPES[content_type]}"
+        pathname = f"airbnb/images/{key}"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "x-api-version": "12",
+            "x-vercel-blob-store-id": self.store_id,
+            "x-vercel-blob-access": "private",
+            "x-content-type": content_type,
+            "x-add-random-suffix": "0",
+            "x-allow-overwrite": "0",
+            "x-cache-control-max-age": "31536000",
+        }
+        try:
+            response = httpx.put(
+                "https://blob.vercel-storage.com",
+                params={"pathname": pathname},
+                headers=headers,
+                content=content,
+                timeout=20,
+            )
+            response.raise_for_status()
+            try:
+                uploaded = response.json()
+            except ValueError as exc:
+                raise SnapshotUnavailable("Image storage did not confirm the upload.") from exc
+            if not uploaded.get("url"):
+                raise SnapshotUnavailable("Image storage did not confirm the upload.")
+            return key
+        except httpx.HTTPError as exc:
+            raise SnapshotUnavailable("Image storage is temporarily unavailable.") from exc
+
+    def get_image(self, key):
+        content_type = next((mime for mime, ext in IMAGE_TYPES.items() if key.endswith("." + ext)), None)
+        if not content_type:
+            return None
+        pathname = f"airbnb/images/{key}"
+        url = f"https://{self.store_id.lower()}.private.blob.vercel-storage.com/{pathname}"
+        try:
+            response = httpx.get(
+                url,
+                params={"cache": "0"},
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=20,
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            if len(response.content) > MAX_IMAGE_BYTES:
+                raise SnapshotUnavailable("Stored image exceeds the demo upload limit.")
+            return response.content
+        except httpx.HTTPError as exc:
+            raise SnapshotUnavailable("Image storage is temporarily unavailable.") from exc
 
     def read(self):
         try:

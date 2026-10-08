@@ -232,6 +232,7 @@ HOMES = [
 
 def seed(db):
     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+        seed_completed_review_stay(db)
         return
     db.executemany(
         "INSERT INTO users VALUES (?,?,?,?,?)",
@@ -358,3 +359,33 @@ def seed(db):
             ),
         )
     db.execute("INSERT INTO wishlists VALUES(1,1)")
+    seed_completed_review_stay(db)
+
+
+def seed_completed_review_stay(db):
+    """Keep one fictional completed trip available for the optional review flow."""
+    columns = {row[1] for row in db.execute("PRAGMA table_info(bookings)")}
+    if "idempotency_key" not in columns or db.execute(
+        "SELECT 1 FROM bookings WHERE user_id=1 AND idempotency_key='demo-completed-review-v1'"
+    ).fetchone():
+        return
+    from .migrations import BOOKING_INSERT_GUARD
+
+    stay = booking_today() - timedelta(days=30)
+    checkout = stay + timedelta(days=3)
+    listing = db.execute("SELECT price,cleaning_fee FROM listings WHERE id=1").fetchone()
+    if not listing:
+        return
+    subtotal = listing["price"] * 3
+    service_fee = (subtotal * 14 + 50) // 100
+    db.execute("DROP TRIGGER IF EXISTS bookings_validate_insert")
+    try:
+        db.execute(
+            """INSERT INTO bookings(
+                listing_id,user_id,check_in,check_out,guests,nightly_price,
+                cleaning_fee,service_fee,total,idempotency_key
+            ) VALUES(1,1,?,?,2,?,?,?,?, 'demo-completed-review-v1')""",
+            (str(stay), str(checkout), listing["price"], listing["cleaning_fee"], service_fee, subtotal + listing["cleaning_fee"] + service_fee),
+        )
+    finally:
+        db.execute(BOOKING_INSERT_GUARD)

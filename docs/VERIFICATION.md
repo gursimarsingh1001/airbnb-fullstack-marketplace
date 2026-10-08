@@ -2,7 +2,7 @@
 
 ## Automated checks
 
-- `python -m pytest backend/tests -q`: **62 passed** (9 October 2026).
+- `python -m pytest backend/tests -q`: **68 passed** (9 October 2026, bonus feature update).
 - `npm test`: **8 passed**.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed with zero warnings.
@@ -41,6 +41,13 @@ The automatic test database is isolated in a temporary directory. Browser verifi
 - Live host API creation, price update, a fresh read, and soft-delete passed. The test listing was removed; the 20 seed homes remain.
 - Mobile layout showed no horizontal document overflow. Desktop preview is saved in `live-demo.jpg`.
 - Final local backend suite: **62 passed**. Vercel production build passed compilation, TypeScript, and static export.
+
+## Optional bonus features (9 October 2026)
+
+- Review flow: on the isolated local database, opened Trips, submitted a review for the seeded completed stay, and saw “Review shared” plus a success toast. The 68-test backend suite checks completed-stay eligibility, guest ownership, one review per booking, rating aggregation, concurrent duplicate submissions, and a database-level guard.
+- Dark mode: toggled from the account menu and reloaded; the dark palette remained active. The feature stores only the appearance preference in browser local storage.
+- Cloud photo uploads: implementation uses the existing private Vercel Blob store and 3 MB JPEG/PNG/WebP limits. Mocked storage tests verify generated private paths, upload/fetch requests, validation, and proxy behavior. A real cloud upload was intentionally not sent during QA because it would consume the shared demo Blob quota.
+- Interactive map, Superhost labels/rating aggregation, and responsive layouts existed before this update and remain implemented; see [the requirement matrix](REQUIREMENTS.md) and [audit](audit.md) for the earlier browser evidence.
 
 ## Map pan regression check (9 October 2026)
 

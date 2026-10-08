@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import database
+from backend import main
 from backend.booking_rules import booking_today
 from backend.main import app
 from test_api import client, listing_payload, stay
@@ -154,7 +155,7 @@ def test_restart_initialization_preserves_all_user_data(client):
         assert booking["id"] in {b["id"] for b in restarted.get("/api/bookings").json()}
         assert restarted.post("/api/bookings", json=stay(listing=home["id"])).status_code == 409
     with database.connect() as db:
-        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
         assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 60
 
 
@@ -183,3 +184,84 @@ def test_date_policy_is_explicit_utc(client):
     health = client.get("/api/health").json()
     assert health["booking_today"] == str(booking_today()) and health["date_policy"] == "UTC"
     assert client.post("/api/bookings", json=stay(offset=0, nights=1)).status_code == 201
+
+
+def test_only_guest_can_review_a_completed_stay_once_and_rating_aggregates(client):
+    booking = client.post("/api/bookings", json=stay()).json()
+    url = f"/api/bookings/{booking['id']}/review"
+    body = {"rating": 4, "comment": "A lovely, peaceful stay."}
+    assert client.post(url, json=body).status_code == 422
+    assert client.post(url, json=body, headers={"X-Demo-User": "5"}).status_code == 404
+    with database.connect() as db:
+        db.execute("DROP TRIGGER bookings_preserve_details")
+        db.execute(
+            "UPDATE bookings SET check_in=?,check_out=? WHERE id=?",
+            (str(booking_today() - timedelta(days=4)), str(booking_today() - timedelta(days=1)), booking["id"]),
+        )
+    before = client.get("/api/listings/4").json()
+    assert client.post(url, json={"rating": 6, "comment": "A lovely, peaceful stay."}).status_code == 422
+    assert client.post(url, json={"rating": 5, "comment": "  short  "}).status_code == 422
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        attempts = list(pool.map(lambda _: client.post(url, json=body), range(2)))
+    assert sorted(result.status_code for result in attempts) == [201, 409]
+    response = next(result for result in attempts if result.status_code == 201)
+    assert response.status_code == 201 and response.json()["booking_id"] == booking["id"]
+    assert client.post(url, json=body).status_code == 409
+    after = client.get("/api/listings/4").json()
+    assert after["review_count"] == before["review_count"] + 1
+    assert after["reviews"][0]["comment"] == body["comment"]
+    expected = round((before["rating"] * before["review_count"] + body["rating"]) / after["review_count"], 2)
+    assert after["rating"] == expected
+    own = next(b for b in client.get("/api/bookings").json() if b["id"] == booking["id"])
+    assert own["reviewed"] is True
+
+
+def test_seed_includes_a_completed_stay_that_can_be_reviewed(client):
+    trips = client.get("/api/bookings").json()
+    completed = next(b for b in trips if b["check_out"] <= str(booking_today()))
+    assert completed["listing"]["title"] == "A little closer to paradise"
+    assert completed["reviewed"] is False
+    response = client.post(
+        f"/api/bookings/{completed['id']}/review",
+        json={"rating": 5, "comment": "The home was peaceful and beautifully prepared."},
+    )
+    assert response.status_code == 201
+
+
+def test_database_rejects_review_without_completed_matching_booking(client):
+    booking = client.post("/api/bookings", json=stay()).json()
+    with database.connect() as db:
+        with pytest.raises(sqlite3.IntegrityError, match="completed confirmed stay"):
+            db.execute(
+                "INSERT INTO reviews(listing_id,user_id,booking_id,rating,comment) VALUES(?,?,?,?,?)",
+                (4, 1, booking["id"], 5, "A valid length review."),
+            )
+
+
+def test_host_photo_upload_validates_content_and_serves_cached_image(client, monkeypatch):
+    key = "a" * 32 + ".png"
+    image = b"\x89PNG\r\n\x1a\n" + b"demo image bytes"
+
+    class FakeBlobStore:
+        def put_image(self, content, content_type):
+            assert content == image and content_type == "image/png"
+            return key
+
+        def get_image(self, requested_key):
+            assert requested_key == key
+            return image
+
+    monkeypatch.setattr(main, "BlobStore", FakeBlobStore)
+    upload = {"content_type": "image/png", "content_base64": __import__("base64").b64encode(image).decode()}
+    assert client.post("/api/host/photos", json=upload).status_code == 403
+    assert client.post("/api/host/photos", json={**upload, "content_base64": "%%%"}, headers={"X-Demo-User": "2"}).status_code == 422
+    assert client.post("/api/host/photos", json={**upload, "content_type": "image/jpeg"}, headers={"X-Demo-User": "2"}).status_code == 415
+    uploaded = client.post("/api/host/photos", json=upload, headers={"X-Demo-User": "2"})
+    assert uploaded.status_code == 201
+    assert uploaded.json()["url"].endswith("/api/photos/" + key)
+    assert uploaded.json()["size"] == len(image)
+    served = client.get("/api/photos/" + key)
+    assert served.status_code == 200 and served.content == image
+    assert served.headers["content-type"] == "image/png"
+    assert served.headers["cache-control"].startswith("public, max-age=")
+    assert client.get("/api/photos/../database.sqlite").status_code == 404

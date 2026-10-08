@@ -51,6 +51,7 @@ export type Booking = {
   total: number;
   status: string;
   guest_name: string;
+  reviewed: boolean;
 };
 export type Quote = {
   nights: number;

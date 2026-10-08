@@ -61,14 +61,28 @@ END
 
 def migrate(db):
     db.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
-    if db.execute("SELECT 1 FROM schema_migrations WHERE version=1").fetchone():
-        return
-    columns = {row[1] for row in db.execute("PRAGMA table_info(bookings)")}
-    for column in ("idempotency_key", "request_fingerprint"):
-        if column not in columns:
-            db.execute(f"ALTER TABLE bookings ADD COLUMN {column} TEXT")
-    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS bookings_idempotency ON bookings(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL")
-    db.execute(BOOKING_INSERT_GUARD)
-    db.execute(BOOKING_IMMUTABLE_GUARD)
-    db.execute(BOOKING_STATUS_GUARD)
-    db.execute("INSERT INTO schema_migrations(version) VALUES(1)")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version=1").fetchone():
+        columns = {row[1] for row in db.execute("PRAGMA table_info(bookings)")}
+        for column in ("idempotency_key", "request_fingerprint"):
+            if column not in columns:
+                db.execute(f"ALTER TABLE bookings ADD COLUMN {column} TEXT")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS bookings_idempotency ON bookings(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL")
+        db.execute(BOOKING_INSERT_GUARD)
+        db.execute(BOOKING_IMMUTABLE_GUARD)
+        db.execute(BOOKING_STATUS_GUARD)
+        db.execute("INSERT INTO schema_migrations(version) VALUES(1)")
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version=2").fetchone():
+        columns = {row[1] for row in db.execute("PRAGMA table_info(reviews)")}
+        if "booking_id" not in columns:
+            db.execute("ALTER TABLE reviews ADD COLUMN booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS reviews_booking_unique ON reviews(booking_id) WHERE booking_id IS NOT NULL")
+        db.execute("""CREATE TRIGGER IF NOT EXISTS reviews_completed_stay_guard
+            BEFORE INSERT ON reviews WHEN NEW.booking_id IS NOT NULL
+            BEGIN
+              SELECT CASE WHEN NOT EXISTS (
+                SELECT 1 FROM bookings b WHERE b.id=NEW.booking_id
+                  AND b.listing_id=NEW.listing_id AND b.user_id=NEW.user_id
+                  AND b.status='confirmed' AND b.check_out<=date('now')
+              ) THEN RAISE(ABORT, 'Review requires a completed confirmed stay') END;
+            END""")
+        db.execute("INSERT INTO schema_migrations(version) VALUES(2)")

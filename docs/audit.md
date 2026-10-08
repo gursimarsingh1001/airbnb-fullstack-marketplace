@@ -64,7 +64,15 @@ The production static export was served with FastAPI at `http://127.0.0.1:8002/`
 - Responsive layouts were visually exercised at ~390/768 px and wide desktop inspected; a precise 1440 px overflow assertion was not separately recorded. Tablet and desktop screenshots were inspected but only the preexisting wide preview and two phone captures are retained.
 - Keyboard dialog behavior was tested. A full screen-reader audit, automated WCAG contrast/axe scan, and exhaustive focus review of every route were not run.
 - Browser-level unknown-ID direct URL handling, all date picker gestures at all sizes, and image accessibility/network failure permutations were not exhaustively traversed; relevant API/domain regressions and fallback states are tested.
-- No real auth, payments, identity checks, host messaging, cloud photo upload or live map. The public demo identity header can be impersonated; it is suitable only for fictional evaluation data.
+- At the original 8 October audit snapshot, cloud photo upload and guest-submitted reviews were not yet implemented. Real authentication, payments, identity checks, host messaging and live pricing map remain mocked or out of scope. The public demo identity header can be impersonated; it is suitable only for fictional evaluation data.
+
+## Optional bonus feature follow-up (9 October 2026)
+
+- Added a completed-stay review path from Trips: only the owning guest can review a confirmed reservation after checkout, once. SQLite migration v2 adds the nullable unique booking relationship and a trigger for direct-write enforcement. The browser flow was exercised against the isolated `.devtools/bonus-qa.sqlite`; it showed a success toast and changed the trip to “Review shared.” No public listing or production reservation was changed.
+- Added server-side private Vercel Blob photo upload and an authenticated same-origin image proxy. PNG/JPEG/WebP bytes, MIME signatures, 3 MB maximum, host role, generated names, and private Blob request headers are tested. Storage HTTP behavior is mocked in automated tests. A real upload was not attempted, to avoid consuming the shared Blob quota; deployment configuration provides the existing Blob token.
+- Added account-menu dark mode with a stored preference. The local browser showed the dark palette and retained it after reload. Existing CSS responsive breakpoints continue to cover mobile/tablet/desktop.
+- The interactive approximate-pin map, Superhost badge, rating average/count aggregation, and responsive layouts were already present and verified in the earlier audit. These remain listed in [the requirement matrix](REQUIREMENTS.md).
+- Latest checks after these changes: **68 backend tests passed**, **8 frontend tests passed**, `npm run typecheck`, `npm run lint`, and `npm run build` all passed. Image-storage integration against Vercel and a fresh hosted deployment of this bonus update are not yet verified at this point in the audit.
 - External illustrative image availability and the free hosting quota remain outside source-level guarantees. Serverless whole-file snapshot storage is for the small assignment dataset only.
 
 See [REQUIREMENTS.md](REQUIREMENTS.md) for feature-by-feature status and [README.md](../README.md) for setup, schema, pricing, API, deployment and demonstration instructions.
