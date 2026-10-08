@@ -53,13 +53,14 @@ The production static export was served with FastAPI at `http://127.0.0.1:8002/`
 
 ## Deployment readiness
 
-- Existing repository and deployed URL are [public source](https://github.com/gursimarsingh1001/airbnb-fullstack-marketplace) and [Vercel demo](https://airbnb-fullstack-marketplace.vercel.app). A prior production audit passed public API/browser flows and Vercel Hobby was confirmed. This audit's source changes are not counted as live until the current build is published and rechecked.
+- Existing repository and deployed URL are [public source](https://github.com/gursimarsingh1001/airbnb-fullstack-marketplace) and [Vercel demo](https://airbnb-fullstack-marketplace.vercel.app). Commit `84548fb` was pushed to `main`, then Vercel reported production deployment `4jsgqLvFj7CBUAwSfDYcBiLozGdN` as **READY** and aliased the stable demo URL. Its Next and Python builds passed. The live app rendered the database-backed explore grid; clicking Cabins returned the two seeded Himachal cabins with correct titles, prices, and result count, verifying same-origin backend connectivity through the actual UI. No production records were modified.
+- Browser tooling blocked direct navigation to `/api/health` (`ERR_BLOCKED_BY_CLIENT`) and Vercel CLI `curl` did not return before its network wait, so a direct live API status/body check was not completed. The hosted UI's listing fetch and filter response succeeded; the API itself is fully covered by 62 local tests.
 - `vercel.json` puts exported Next files and Python FastAPI function on one origin. Vercel serverless SQLite durability depends on private Vercel Blob snapshots with ETag compare-and-swap (`BLOB_READ_WRITE_TOKEN`, `DATABASE_BLOB_ENABLED=1`); ephemeral function disk alone is not durable. This is configured for the existing **free Hobby** demo and uses quotas; no paid Render/persistence plan is requested. Local SQLite/Docker uses a persistent local file/volume.
 - Source ignores `.env*`, `.vercel/`, local databases and `.devtools/`; `.vercelignore` excludes local docs/tests from the function deployment. `.env.local` contains deployment-local secrets and is ignored; it was not printed in this audit or staged intentionally.
 
 ## Unverified or bounded checks
 
-- The post-audit Vercel release and production API smoke check remain pending until the final source is pushed/deployed. Public live state is not used for destructive testing.
+- A direct public API endpoint check was blocked by browser-tool policy and CLI network timeout; public API behavior is indirectly verified through successful live explore and filter requests. Public live state was not used for destructive testing.
 - Responsive layouts were visually exercised at ~390/768 px and wide desktop inspected; a precise 1440 px overflow assertion was not separately recorded. Tablet and desktop screenshots were inspected but only the preexisting wide preview and two phone captures are retained.
 - Keyboard dialog behavior was tested. A full screen-reader audit, automated WCAG contrast/axe scan, and exhaustive focus review of every route were not run.
 - Browser-level unknown-ID direct URL handling, all date picker gestures at all sizes, and image accessibility/network failure permutations were not exhaustively traversed; relevant API/domain regressions and fallback states are tested.
