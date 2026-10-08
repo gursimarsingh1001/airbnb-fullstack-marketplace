@@ -1,0 +1,18 @@
+services:
+  airbnb:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_PATH: /data/airbnb.db
+      PORT: 8000
+    volumes:
+      - airbnb-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  airbnb-data:

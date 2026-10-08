@@ -1,0 +1,1182 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Search,
+  Globe,
+  Menu,
+  UserRound,
+  ChevronDown,
+  ChevronRight,
+  ArrowUpRight,
+  Heart,
+  Map,
+  MapPin,
+  Home,
+  BriefcaseBusiness,
+  Sparkles,
+  SlidersHorizontal,
+  X,
+  Check,
+  CalendarDays,
+  ShieldCheck,
+  ArrowLeft,
+  Star,
+} from "lucide-react";
+import {
+  api,
+  Listing,
+  Booking,
+  User,
+  money,
+  prettyDate,
+  categories,
+  amenityNames,
+} from "@/lib/api";
+import {
+  Logo,
+  Modal,
+  Calendar,
+  GuestPicker,
+  ListingCard,
+  categoryIcons,
+  Empty,
+  Loading,
+} from "./UI";
+import Detail from "./Detail";
+import Host from "./Host";
+
+const guest: User = {
+  id: 1,
+  name: "Alex Morgan",
+  role: "guest",
+  avatar: "AM",
+  joined_year: 2024,
+};
+const defaultFilters = {
+  min: 0,
+  max: 30000,
+  type: "",
+  amenities: [] as string[],
+};
+type Filters = typeof defaultFilters;
+type SearchState = { q: string; start: string; end: string; guests: number };
+
+export default function Marketplace() {
+  const [user, setUser] = useState<User>(guest),
+    [users, setUsers] = useState<User[]>([]),
+    [route, setRoute] = useState("explore"),
+    [menu, setMenu] = useState(false),
+    [modal, setModal] = useState(""),
+    [toast, setToast] = useState(""),
+    [view, setView] = useState("homes"),
+    [q, setQ] = useState(""),
+    [start, setStart] = useState(""),
+    [end, setEnd] = useState(""),
+    [guests, setGuests] = useState(1),
+    [search, setSearch] = useState<SearchState>({
+      q: "",
+      start: "",
+      end: "",
+      guests: 1,
+    }),
+    [category, setCategory] = useState(""),
+    [filters, setFilters] = useState<Filters>(defaultFilters),
+    [draftFilters, setDraftFilters] = useState<Filters>(defaultFilters),
+    [page, setPage] = useState(1),
+    [homes, setHomes] = useState<Listing[]>([]),
+    [total, setTotal] = useState(0),
+    [pages, setPages] = useState(1),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [wishlist, setWishlist] = useState<Listing[]>([]),
+    [trips, setTrips] = useState<Booking[]>([]),
+    [cancel, setCancel] = useState<Booking | null>(null),
+    [busy, setBusy] = useState(false),
+    [refresh, setRefresh] = useState(0),
+    [mapView, setMapView] = useState(false);
+  const notify = useCallback((s: string) => setToast(s), []);
+  const navigate = (target: string) => {
+    window.location.hash = target;
+    setMenu(false);
+    setModal("");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+  useEffect(() => {
+    const change = () => {
+      setRoute(window.location.hash.slice(1) || "explore");
+      setMapView(false);
+    };
+    change();
+    window.addEventListener("hashchange", change);
+    api<User[]>("/users", 1)
+      .then((list) => {
+        setUsers(list);
+        const id = Number(localStorage.getItem("airbnb-demo-user"));
+        setUser(list.find((u) => u.id === id) || guest);
+      })
+      .catch(() => {});
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 4200);
+    return () => clearTimeout(t);
+  }, [toast]);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    const params = new URLSearchParams({
+      q: search.q,
+      category,
+      guests: String(search.guests),
+      min_price: String(filters.min),
+      max_price: String(filters.max),
+      property_type: filters.type,
+      amenities: filters.amenities.join(","),
+      page: String(page),
+      limit: "15",
+    });
+    if (search.start && search.end) {
+      params.set("check_in", search.start);
+      params.set("check_out", search.end);
+    }
+    api<{ items: Listing[]; total: number; pages: number }>(
+      "/listings?" + params,
+      user.id,
+    )
+      .then((r) => {
+        if (active) {
+          setHomes(r.items);
+          setTotal(r.total);
+          setPages(r.pages);
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user.id, search, category, filters, page, refresh]);
+  useEffect(() => {
+    let active = true;
+    api<Listing[]>("/wishlists", user.id)
+      .then((r) => {
+        if (active) setWishlist(r);
+      })
+      .catch((e) => notify(e.message));
+    if (route === "trips")
+      api<Booking[]>("/bookings", user.id)
+        .then((r) => {
+          if (active) setTrips(r);
+        })
+        .catch((e) => notify(e.message));
+    return () => {
+      active = false;
+    };
+  }, [user.id, route, refresh, notify]);
+  useEffect(() => {
+    const close = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, []);
+  async function toggleSave(h: Listing) {
+    const exists = wishlist.some((w) => w.id === h.id);
+    try {
+      await api("/wishlists/" + h.id, user.id, exists ? "DELETE" : "PUT");
+      setWishlist((w) => (exists ? w.filter((x) => x.id !== h.id) : [...w, h]));
+      notify(
+        exists
+          ? "Removed from your wishlist."
+          : "Saved to your wishlist. A little inspiration for later.",
+      );
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }
+  function searchHomes() {
+    if ((start && !end) || (!start && end)) {
+      setModal("dates");
+      notify("Choose both check-in and checkout to search.");
+      return;
+    }
+    setSearch({ q, start, end, guests });
+    setPage(1);
+    navigate("explore");
+  }
+  function clear() {
+    setQ("");
+    setStart("");
+    setEnd("");
+    setGuests(1);
+    setCategory("");
+    setFilters(defaultFilters);
+    setSearch({ q: "", start: "", end: "", guests: 1 });
+    setPage(1);
+  }
+  function switchUser(u: User, target?: string) {
+    setUser(u);
+    localStorage.setItem("airbnb-demo-user", String(u.id));
+    setModal("");
+    setMenu(false);
+    notify(`You’re browsing as ${u.name}.`);
+    if (target) navigate(target);
+    else if (route === "host" && u.role !== "host") navigate("explore");
+  }
+  function host() {
+    if (user.role === "host") navigate("host");
+    else setModal("host-profile");
+  }
+  async function cancelTrip() {
+    if (!cancel) return;
+    setBusy(true);
+    try {
+      await api("/bookings/" + cancel.id, user.id, "DELETE");
+      notify("Reservation cancelled. Your dates have been released.");
+      setCancel(null);
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const listingId = route.startsWith("listing/")
+    ? Number(route.split("/")[1])
+    : null;
+  const filterCount =
+    (filters.min > 0 || filters.max < 30000 ? 1 : 0) +
+    (filters.type ? 1 : 0) +
+    filters.amenities.length;
+  const isExplore = route === "explore";
+  const savedIds = wishlist.map((h) => h.id);
+  const cards = (items: Listing[]) =>
+    items.map((h) => (
+      <ListingCard
+        key={h.id}
+        listing={h}
+        saved={savedIds.includes(h.id)}
+        onSave={() => toggleSave(h)}
+        onOpen={() => navigate("listing/" + h.id)}
+      />
+    ));
+  return (
+    <>
+      <header className={`site-header ${isExplore ? "expanded" : ""}`}>
+        <div className="topbar">
+          <button
+            className="brand-button"
+            onClick={() => {
+              clear();
+              navigate("explore");
+            }}
+            aria-label="Airbnb home"
+          >
+            <Logo />
+          </button>
+          <nav className="primary-nav" aria-label="Main navigation">
+            <button
+              className={isExplore && view === "homes" ? "active" : ""}
+              onClick={() => {
+                setView("homes");
+                navigate("explore");
+              }}
+            >
+              <span className="nav-illustration house-illustration">
+                <Home size={27} />
+              </span>{" "}
+              Homes
+            </button>
+            <button
+              onClick={() => {
+                setView("experiences");
+                setModal("experiences");
+              }}
+            >
+              <span className="nav-illustration balloon-illustration">
+                <Globe size={27} />
+              </span>{" "}
+              Experiences <span className="new-label">NEW</span>
+            </button>
+            <button
+              onClick={() => {
+                setView("services");
+                setModal("services");
+              }}
+            >
+              <span className="nav-illustration service-illustration">
+                <Sparkles size={26} />
+              </span>{" "}
+              Services <span className="new-label">NEW</span>
+            </button>
+          </nav>
+          <div className="account-actions">
+            <button className="host-link" onClick={host}>
+              {user.role === "host" ? "Hosting dashboard" : "Become a host"}
+            </button>
+            <button
+              className="icon-button language-button"
+              aria-label="Language and currency"
+              onClick={() => setModal("language")}
+            >
+              <Globe size={19} />
+            </button>
+            <div className="account-container">
+              <button
+                className="profile-button"
+                aria-label="Open account menu"
+                aria-expanded={menu}
+                onClick={() => setMenu(!menu)}
+              >
+                <Menu size={18} />
+                <span className="profile-avatar">
+                  <UserRound size={20} />
+                </span>
+              </button>
+              {menu && (
+                <>
+                  <button
+                    className="menu-dismiss"
+                    tabIndex={-1}
+                    aria-label="Close account menu"
+                    onClick={() => setMenu(false)}
+                  />
+                  <div className="account-menu">
+                    <div className="menu-profile">
+                      <span className="avatar">{user.avatar}</span>
+                      <div>
+                        <strong>{user.name}</strong>
+                        <small>Demo {user.role} profile</small>
+                      </div>
+                    </div>
+                    <button onClick={() => navigate("trips")}>
+                      <BriefcaseBusiness size={18} /> Trips
+                    </button>
+                    <button onClick={() => navigate("wishlists")}>
+                      <Heart size={18} /> Wishlists
+                    </button>
+                    <button onClick={host}>
+                      <Home size={18} /> Hosting dashboard
+                    </button>
+                    <hr />
+                    <button
+                      onClick={() => {
+                        setMenu(false);
+                        setModal("profiles");
+                      }}
+                    >
+                      <UserRound size={18} /> Switch demo profile
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMenu(false);
+                        setModal("help");
+                      }}
+                    >
+                      Help centre <ArrowUpRight size={16} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        {isExplore && (
+          <div className="search-wrap">
+            <form
+              className="search-bar"
+              onSubmit={(e) => {
+                e.preventDefault();
+                searchHomes();
+              }}
+            >
+              <label className="search-destination">
+                <strong>Where</strong>
+                <input
+                  aria-label="Search destinations"
+                  placeholder="Search destinations"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </label>
+              <span className="search-divider" />
+              <button
+                type="button"
+                className="search-segment"
+                onClick={() => setModal("dates")}
+              >
+                <strong>Check in</strong>
+                <span className={start ? "has-value" : ""}>
+                  {prettyDate(start)}
+                </span>
+              </button>
+              <span className="search-divider" />
+              <button
+                type="button"
+                className="search-segment"
+                onClick={() => setModal("dates")}
+              >
+                <strong>Check out</strong>
+                <span className={end ? "has-value" : ""}>
+                  {prettyDate(end)}
+                </span>
+              </button>
+              <span className="search-divider" />
+              <button
+                type="button"
+                className="search-segment guests-segment"
+                onClick={() => setModal("guests")}
+              >
+                <strong>Who</strong>
+                <span>{guests > 1 ? `${guests} guests` : "Add guests"}</span>
+              </button>
+              <button className="search-submit" aria-label="Search homes">
+                <Search size={21} />
+              </button>
+            </form>
+            <div className="mobile-search-options">
+              <button onClick={() => setModal("dates")}>
+                <CalendarDays size={14} />
+                {start
+                  ? prettyDate(start) + (end ? " – " + prettyDate(end) : "")
+                  : "Any week"}
+              </button>
+              <span>·</span>
+              <button onClick={() => setModal("guests")}>
+                <UserRound size={14} />
+                {guests > 1 ? `${guests} guests` : "Add guests"}
+              </button>
+            </div>
+          </div>
+        )}
+      </header>
+      {isExplore && (
+        <>
+          <div className="category-bar">
+            <div className="category-scroll">
+              {["All homes", ...categories].map((c, i) => {
+                const Icon = categoryIcons[i];
+                return (
+                  <button
+                    key={c}
+                    className={`category ${category === c || (!category && i === 0) ? "active" : ""}`}
+                    onClick={() => {
+                      setCategory(i === 0 ? "" : c);
+                      setPage(1);
+                    }}
+                  >
+                    <Icon size={25} strokeWidth={1.6} />
+                    <span>{c}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              className={`filter-button ${filterCount ? "filtered" : ""}`}
+              onClick={() => {
+                setDraftFilters(filters);
+                setModal("filters");
+              }}
+            >
+              <SlidersHorizontal size={17} /> Filters{" "}
+              {filterCount > 0 && <span>{filterCount}</span>}
+            </button>
+          </div>
+          <main className="explore-shell">
+            <div className="explore-heading">
+              <div>
+                <div className="eyebrow">A LITTLE CHANGE OF SCENERY</div>
+                <h1>
+                  {search.q
+                    ? `Stays in ${search.q}`
+                    : category
+                      ? `${category}. Endless possibilities.`
+                      : "Find your kind of getaway."}
+                </h1>
+                <p>
+                  {search.q || category
+                    ? "Thoughtfully hosted homes. A place to make your own."
+                    : "Extraordinary places. A little closer to feeling at home."}
+                </p>
+              </div>
+              <div className="results-note">
+                <span className="green-dot" />
+                {loading
+                  ? "Finding lovely places…"
+                  : `${total} beautiful places to stay`}
+                <span className="results-dates">
+                  {search.start
+                    ? `${prettyDate(search.start)} – ${prettyDate(search.end)}`
+                    : "A new favourite is waiting"}
+                </span>
+              </div>
+            </div>
+            {search.q || search.start || filterCount ? (
+              <div className="active-filters">
+                <span>
+                  {search.q || "Anywhere"} ·{" "}
+                  {search.start
+                    ? prettyDate(search.start) + " – " + prettyDate(search.end)
+                    : "Any week"}{" "}
+                  · {search.guests} guest{search.guests > 1 ? "s" : ""}
+                </span>
+                <button onClick={clear}>
+                  Clear all <X size={14} />
+                </button>
+              </div>
+            ) : null}
+            {loading ? (
+              <Loading />
+            ) : error ? (
+              <Empty
+                title="Let’s try that again"
+                text={error}
+                action={
+                  <button
+                    className="dark-button"
+                    onClick={() => setRefresh((n) => n + 1)}
+                  >
+                    Try again
+                  </button>
+                }
+              />
+            ) : homes.length ? (
+              <>
+                <div className="listing-grid">{cards(homes)}</div>
+                <div className="explore-more">
+                  <h3>Keep exploring. Your next favourite is out there.</h3>
+                  {pages > 1 && (
+                    <div className="pagination">
+                      <button
+                        className="circle-button"
+                        disabled={page <= 1}
+                        aria-label="Previous page"
+                        onClick={() => {
+                          setPage(page - 1);
+                          window.scrollTo({ top: 220, behavior: "smooth" });
+                        }}
+                      >
+                        <ArrowLeft size={17} />
+                      </button>
+                      {Array.from({ length: pages }, (_, i) => (
+                        <button
+                          key={i}
+                          className={`circle-button ${page === i + 1 ? "active" : ""}`}
+                          aria-label={`Page ${i + 1}`}
+                          aria-current={page === i + 1 ? "page" : undefined}
+                          onClick={() => {
+                            setPage(i + 1);
+                            window.scrollTo({ top: 220, behavior: "smooth" });
+                          }}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                      <button
+                        className="circle-button"
+                        disabled={page >= pages}
+                        aria-label="Next page"
+                        onClick={() => {
+                          setPage(page + 1);
+                          window.scrollTo({ top: 220, behavior: "smooth" });
+                        }}
+                      >
+                        <ChevronRight size={17} />
+                      </button>
+                    </div>
+                  )}
+                  <p>
+                    Showing {(page - 1) * 15 + 1}–{Math.min(page * 15, total)}{" "}
+                    of {total} homes
+                  </p>
+                </div>
+              </>
+            ) : (
+              <Empty
+                title="A different search might do the trick"
+                text="Try a nearby destination, different dates, or fewer filters."
+                action={
+                  <button className="dark-button" onClick={clear}>
+                    Explore all homes
+                  </button>
+                }
+              />
+            )}
+          </main>
+          {!loading && homes.length > 0 && (
+            <button className="map-toggle" onClick={() => setMapView(!mapView)}>
+              {mapView ? "Show homes" : "Show map"}
+              <Map size={17} />
+            </button>
+          )}
+        </>
+      )}
+      {listingId && (
+        <Detail
+          key={`${listingId}-${user.id}`}
+          id={listingId}
+          user={user.id}
+          saved={savedIds.includes(listingId)}
+          onSave={() => {
+            api<Listing>("/listings/" + listingId, user.id)
+              .then(toggleSave)
+              .catch((e) => notify(e.message));
+          }}
+          onBack={() => navigate("explore")}
+          onBooked={() => {
+            setRefresh((n) => n + 1);
+            navigate("trips");
+          }}
+          notify={notify}
+          initialStart={search.start}
+          initialEnd={search.end}
+          initialGuests={search.guests}
+        />
+      )}
+      {route === "wishlists" && (
+        <main className="workspace-shell">
+          <p className="eyebrow">KEEP THE GOOD ONES CLOSE</p>
+          <h1>Your wishlists</h1>
+          <p className="muted page-subtitle">
+            Places you love. Trips you haven’t taken yet.
+          </p>
+          {wishlist.length ? (
+            <div className="listing-grid">{cards(wishlist)}</div>
+          ) : (
+            <Empty
+              title="Your next adventure starts with a heart"
+              text="Tap the heart on any home to save it here for later."
+              action={
+                <button
+                  className="dark-button"
+                  onClick={() => navigate("explore")}
+                >
+                  Start exploring
+                </button>
+              }
+            />
+          )}
+        </main>
+      )}
+      {route === "trips" && (
+        <main className="workspace-shell">
+          <p className="eyebrow">SOMETHING TO LOOK FORWARD TO</p>
+          <h1>Your trips</h1>
+          <p className="muted page-subtitle">
+            New places. New memories. All in one place.
+          </p>
+          {trips.length ? (
+            <div className="trips-grid">
+              {trips.map((b) => (
+                <article className="trip-card" key={b.id}>
+                  <button onClick={() => navigate("listing/" + b.listing.id)}>
+                    <img src={b.listing.photos[0]} alt={b.listing.title} />
+                  </button>
+                  <div className="trip-copy">
+                    <span className={`status ${b.status}`}>{b.status}</span>
+                    <h2>{b.listing.location.split(",")[0]}</h2>
+                    <p>{b.listing.title}</p>
+                    <hr />
+                    <div className="trip-details">
+                      <CalendarDays size={18} />
+                      <span>
+                        {prettyDate(b.check_in)} – {prettyDate(b.check_out)},{" "}
+                        {b.check_in.slice(0, 4)}
+                      </span>
+                    </div>
+                    <div className="trip-details">
+                      <UserRound size={18} />
+                      <span>
+                        {b.guests} guests · {money(b.total)} total
+                      </span>
+                    </div>
+                    <div className="trip-actions">
+                      <button
+                        className="text-button"
+                        onClick={() => navigate("listing/" + b.listing.id)}
+                      >
+                        View home <ArrowUpRight size={16} />
+                      </button>
+                      {b.status === "confirmed" && (
+                        <button
+                          className="text-button muted"
+                          onClick={() => setCancel(b)}
+                        >
+                          Cancel trip
+                        </button>
+                      )}
+                    </div>
+                    <small className="muted">
+                      Confirmation #AB{String(b.id).padStart(6, "0")}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <Empty
+              title="Time to dust off your bags"
+              text="Your next adventure is waiting. Find a home you’ll love."
+              action={
+                <button
+                  className="primary-button"
+                  onClick={() => navigate("explore")}
+                >
+                  Start searching
+                </button>
+              }
+            />
+          )}
+        </main>
+      )}
+      {route === "host" &&
+        (user.role === "host" ? (
+          <Host
+            user={user}
+            notify={notify}
+            onOpen={(id) => navigate("listing/" + id)}
+          />
+        ) : (
+          <main className="workspace-shell">
+            <Empty
+              title="Make yourself at home, host"
+              text="Choose a demo host profile to create and manage listings."
+              action={
+                <button
+                  className="primary-button"
+                  onClick={() => setModal("host-profile")}
+                >
+                  Choose host profile
+                </button>
+              }
+            />
+          </main>
+        ))}
+      <footer>
+        <div className="footer-main">
+          <div>
+            <h3>Inspiration for your next escape</h3>
+            <div className="footer-destinations">
+              {["Goa", "Manali", "Bali", "Coorg", "Udaipur", "Lonavala"].map(
+                (d) => (
+                  <button
+                    key={d}
+                    onClick={() => {
+                      setQ(d);
+                      setSearch({ q: d, start: "", end: "", guests: 1 });
+                      setCategory("");
+                      setFilters(defaultFilters);
+                      setPage(1);
+                      navigate("explore");
+                    }}
+                  >
+                    <strong>{d}</strong>
+                    <span>
+                      {d === "Bali"
+                        ? "Island getaways"
+                        : d === "Goa"
+                          ? "Beachside stays"
+                          : d === "Manali"
+                            ? "Mountain retreats"
+                            : "Homes & hideaways"}
+                    </span>
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <span>© 2026 Airbnb clone · An independent assignment project</span>
+          <div>
+            <button onClick={() => setModal("about")}>About this demo</button>
+            <span>·</span>
+            <button onClick={() => setModal("help")}>Help centre</button>
+          </div>
+          <div className="footer-locale">
+            <Globe size={15} /> English (IN)<strong>₹ INR</strong>
+          </div>
+        </div>
+      </footer>
+      <nav className="mobile-nav" aria-label="Mobile navigation">
+        <button
+          className={isExplore ? "active" : ""}
+          onClick={() => navigate("explore")}
+        >
+          <Search />
+          Explore
+        </button>
+        <button
+          className={route === "wishlists" ? "active" : ""}
+          onClick={() => navigate("wishlists")}
+        >
+          <Heart />
+          Wishlists
+        </button>
+        <button
+          className={route === "trips" ? "active" : ""}
+          onClick={() => navigate("trips")}
+        >
+          <BriefcaseBusiness />
+          Trips
+        </button>
+        <button onClick={() => setModal("profiles")}>
+          <UserRound />
+          Profile
+        </button>
+      </nav>
+      {modal === "dates" && (
+        <Modal title="When’s your getaway?" wide onClose={() => setModal("")}>
+          <div className="modal-body">
+            <Calendar
+              start={start}
+              end={end}
+              onChange={(s, e) => {
+                setStart(s);
+                setEnd(e);
+              }}
+            />
+            <div className="form-actions">
+              <span className="muted small">
+                A little time away goes a long way.
+              </span>
+              <button className="dark-button" onClick={() => setModal("")}>
+                Done
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {modal === "guests" && (
+        <Modal title="Who’s coming along?" onClose={() => setModal("")}>
+          <div className="modal-body">
+            <GuestPicker value={guests} onChange={setGuests} />
+            <p className="muted small">
+              Our homes accommodate up to 16 guests. Each listing has its own
+              capacity.
+            </p>
+            <button
+              className="dark-button float-right"
+              onClick={() => setModal("")}
+            >
+              Done
+            </button>
+          </div>
+        </Modal>
+      )}
+      {modal === "filters" && (
+        <Modal title="Filters" onClose={() => setModal("")}>
+          <div className="modal-body filter-modal">
+            <section>
+              <h2>Price range</h2>
+              <p className="muted">Nightly prices before fees</p>
+              <div className="price-histogram">
+                {[
+                  18, 28, 40, 35, 58, 72, 88, 100, 93, 84, 92, 78, 67, 71, 53,
+                  42, 38, 26, 21, 18, 12, 8,
+                ].map((v, i) => (
+                  <div key={i} style={{ height: v + "%" }} />
+                ))}
+              </div>
+              <div className="form-grid">
+                <label>
+                  Minimum
+                  <input
+                    aria-label="Minimum price"
+                    type="number"
+                    min={0}
+                    value={draftFilters.min}
+                    onChange={(e) =>
+                      setDraftFilters((f) => ({ ...f, min: +e.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Maximum
+                  <input
+                    aria-label="Maximum price"
+                    type="number"
+                    min={draftFilters.min}
+                    value={draftFilters.max}
+                    onChange={(e) =>
+                      setDraftFilters((f) => ({ ...f, max: +e.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+            <section>
+              <h2>Type of place</h2>
+              <div className="type-options">
+                {[
+                  "",
+                  "Villa",
+                  "Cabin",
+                  "Cottage",
+                  "Apartment",
+                  "Tiny home",
+                ].map((t) => (
+                  <button
+                    key={t}
+                    className={draftFilters.type === t ? "selected" : ""}
+                    onClick={() => setDraftFilters((f) => ({ ...f, type: t }))}
+                  >
+                    {t || "Any type"}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section>
+              <h2>The little essentials</h2>
+              <div className="amenity-options">
+                {amenityNames.map((a) => (
+                  <label key={a}>
+                    <input
+                      type="checkbox"
+                      checked={draftFilters.amenities.includes(a)}
+                      onChange={() =>
+                        setDraftFilters((f) => ({
+                          ...f,
+                          amenities: f.amenities.includes(a)
+                            ? f.amenities.filter((x) => x !== a)
+                            : [...f.amenities, a],
+                        }))
+                      }
+                    />
+                    {a}
+                  </label>
+                ))}
+              </div>
+            </section>
+            <div className="form-actions">
+              <button
+                className="text-button"
+                onClick={() => setDraftFilters(defaultFilters)}
+              >
+                Clear all
+              </button>
+              <button
+                className="dark-button"
+                onClick={() => {
+                  if (draftFilters.min > draftFilters.max) {
+                    notify("Maximum price should be higher than minimum.");
+                    return;
+                  }
+                  setFilters(draftFilters);
+                  setPage(1);
+                  setModal("");
+                }}
+              >
+                Show homes
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {(modal === "profiles" || modal === "host-profile") && (
+        <Modal
+          title={
+            modal === "host-profile"
+              ? "Step into your hosting space"
+              : "Who’s exploring today?"
+          }
+          onClose={() => setModal("")}
+        >
+          <div className="modal-body">
+            <p className="muted">
+              Choose a demo profile. Each has its own trips, wishlists, and
+              hosted homes.
+            </p>
+            <div className="profile-options">
+              {users
+                .filter((u) => modal !== "host-profile" || u.role === "host")
+                .map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() =>
+                      switchUser(
+                        u,
+                        modal === "host-profile" ? "host" : undefined,
+                      )
+                    }
+                  >
+                    <span className="avatar">{u.avatar}</span>
+                    <span>
+                      <strong>{u.name}</strong>
+                      <small>
+                        {u.role === "host"
+                          ? "Host · Manage your homes"
+                          : "Guest · Find your next stay"}
+                      </small>
+                    </span>
+                    {u.id === user.id ? (
+                      <Check size={20} />
+                    ) : (
+                      <ChevronRight size={20} />
+                    )}
+                  </button>
+                ))}
+            </div>
+          </div>
+        </Modal>
+      )}
+      {["experiences", "services", "language", "help", "about"].includes(
+        modal,
+      ) && (
+        <Modal
+          title={
+            modal === "language"
+              ? "Language & currency"
+              : modal === "about"
+                ? "About this demo"
+                : modal === "help"
+                  ? "A little help, right here"
+                  : `${modal === "experiences" ? "Experiences" : "Services"} are on the way`
+          }
+          onClose={() => {
+            setModal("");
+            setView("homes");
+          }}
+        >
+          <div className="modal-body info-modal">
+            <div className="empty-icon">
+              {modal === "language" ? (
+                <Globe size={32} />
+              ) : (
+                <Sparkles size={32} />
+              )}
+            </div>
+            {modal === "language" ? (
+              <>
+                <h2>English (India) · ₹ INR</h2>
+                <p>
+                  This demo displays all prices in Indian rupees. More languages
+                  and currencies are coming soon.
+                </p>
+              </>
+            ) : modal === "about" ? (
+              <>
+                <h2>Built for the love of a good getaway.</h2>
+                <p>
+                  This is an independent educational Airbnb clone, not an
+                  official Airbnb service. Listings, hosts, and reviews are
+                  sample data. Property photos are illustrative.
+                </p>
+                <p>
+                  Bookings and host edits are saved, while checkout is
+                  simulated. No real payment is processed.
+                </p>
+              </>
+            ) : modal === "help" ? (
+              <>
+                <h2>Make yourself at home.</h2>
+                <p>
+                  Search a destination, choose your dates, and reserve a place
+                  you love. Find your reservations under Trips.
+                </p>
+                <p>
+                  Want to host? Switch to a host profile to add and manage
+                  homes. Messaging and identity verification are coming soon.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>More ways to make it memorable.</h2>
+                <p>
+                  We’re making room for {modal}. In the meantime, discover a
+                  home that makes the whole trip.
+                </p>
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    setModal("");
+                    setView("homes");
+                    navigate("explore");
+                  }}
+                >
+                  Explore homes
+                </button>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+      {cancel && (
+        <Modal title="Cancel your trip?" onClose={() => setCancel(null)}>
+          <div className="modal-body">
+            <h2>{cancel.listing.title}</h2>
+            <p>
+              {prettyDate(cancel.check_in)} – {prettyDate(cancel.check_out)}
+            </p>
+            <p>
+              Your reservation will be cancelled and these dates will become
+              available to other guests. No real payment was taken.
+            </p>
+            <div className="form-actions">
+              <button className="text-button" onClick={() => setCancel(null)}>
+                Keep my trip
+              </button>
+              <button
+                className="primary-button"
+                disabled={busy}
+                onClick={cancelTrip}
+              >
+                {busy ? "Cancelling…" : "Cancel reservation"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {mapView && (
+        <Modal
+          title="A world of possibilities"
+          wide
+          onClose={() => setMapView(false)}
+        >
+          <div className="browse-map">
+            <div className="map-road r1" />
+            <div className="map-road r2" />
+            <div className="map-road r3" />
+            <div className="map-lake" />
+            {homes.slice(0, 10).map((h, i) => (
+              <button
+                key={h.id}
+                className="map-price"
+                style={{
+                  left: 12 + (i % 4) * 22 + "%",
+                  top: 15 + Math.floor(i / 4) * 25 + "%",
+                }}
+                onClick={() => {
+                  setMapView(false);
+                  navigate("listing/" + h.id);
+                }}
+              >
+                <strong>{money(h.price)}</strong>
+                <span>{h.location.split(",")[0]}</span>
+              </button>
+            ))}
+            <small>Illustrative map · Select a price to explore a home</small>
+          </div>
+        </Modal>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          <Check size={18} />
+          {toast}
+          <button
+            aria-label="Dismiss notification"
+            onClick={() => setToast("")}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
