@@ -1470,6 +1470,8 @@ footer {
   padding: 25px;
   position: sticky;
   top: 25px;
+  z-index: 2;
+  background: var(--paper);
 }
 .booking-heading {
   display: flex;
