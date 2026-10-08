@@ -48,6 +48,7 @@ The automatic test database is isolated in a temporary directory. Browser verifi
 - Dark mode: toggled from the account menu and reloaded; the dark palette remained active. The feature stores only the appearance preference in browser local storage.
 - Cloud photo uploads: implementation uses the existing private Vercel Blob store and 3 MB JPEG/PNG/WebP limits. Mocked storage tests verify generated private paths, upload/fetch requests, validation, and proxy behavior. A real cloud upload was intentionally not sent during QA because it would consume the shared demo Blob quota.
 - Interactive map, Superhost labels/rating aggregation, and responsive layouts existed before this update and remain implemented; see [the requirement matrix](REQUIREMENTS.md) and [audit](audit.md) for the earlier browser evidence.
+- Published commit `f30235f` to the public repository. Vercel deployment `dpl_7PUA1f9jwkxF3CHHGm6dEVs9DfA5` reached **READY** and updated the stable demo URL. The live Trips page displayed the seeded completed stay and `Leave a review`; opening the review form showed the rating/comment inputs. The account menu exposed the dark-mode toggle. No review was submitted to public data.
 
 ## Map pan regression check (9 October 2026)
 
