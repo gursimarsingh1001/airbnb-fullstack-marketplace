@@ -2,13 +2,15 @@
 
 Date: 9 October 2026. Scope: existing UI only, no new features or backend refactoring in this pass. Earlier audit changes remain in the working tree.
 
+> Historical checkpoint: this report was written before the reviewed changes were committed and deployed. Its local-only and “not yet published” statements describe that checkpoint, not the current submission. See [the final submission verification](audit.md#final-submission-verification-9-october-2026) for the later published state.
+
 ## Environment and limits
 
 - Tested the production Next.js export served by FastAPI at `http://127.0.0.1:8003`.
 - Used `.devtools/responsive-final.sqlite`, an isolated, ignored database. Public/user data was not modified.
 - Exact browser viewport widths: 390, 768, 1024, 1280, 1440 pixels; height 900. Viewport overrides were reset afterward.
 - Layout evidence combines screenshots inspected in the browser and DOM bounds/scroll-width measurements. Screenshots were displayed during verification, not committed as files.
-- This is local verification. These changes have not been committed, pushed, or deployed. No fresh pixel-by-pixel comparison with live Airbnb is claimed.
+- This is local verification. At the time of this checkpoint, these changes had not yet been committed, pushed, or deployed. No fresh pixel-by-pixel comparison with live Airbnb is claimed.
 - Browser console capture reported no errors or warnings in the final test tab. Inspected local server requests returned successful 2xx/304 responses, including host POST/PUT/DELETE. This is not a complete third-party network trace.
 
 ## Responsive
@@ -96,4 +98,4 @@ Only example environment files are tracked. Checks confirmed that the QA databas
 3. Layout verification used one browser engine and five viewport widths, not physical iOS/Android devices or every possible interaction/state. No new exhaustive accessibility or animation-performance audit is claimed.
 4. Authentication and payments remain documented demos; no production-readiness claim is made.
 
-Verdict: the checked local workflows and automated gates pass, and the changes are ready for user review before committing/pushing. This report does not label the unpublished deployment finished.
+Checkpoint verdict: the local workflows and automated gates passed, but this working tree had not yet been published. That release step is recorded in the later final submission verification.

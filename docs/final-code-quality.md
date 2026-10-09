@@ -2,6 +2,8 @@
 
 Date: 9 October 2026. This report concerns the local working tree, including the preserved earlier audit changes. No commit, push or deployment was performed.
 
+> Historical checkpoint: the test counts and “not yet published” verdict below describe the working tree at that time and are superseded by [the final submission verification](audit.md#final-submission-verification-9-october-2026). Keep this report as the record of that earlier code-quality pass.
+
 ## Stack
 - Frontend: Next.js 16.4.0, React 19.2.4, TypeScript (strict mode).
 - Backend: Python, FastAPI 0.115.12, Pydantic 2.11.4, Uvicorn 0.34.2.
@@ -22,7 +24,7 @@ Important files changed in this pass: `backend/main.py`, `backend/activities.py`
 
 ## Requirement matrix
 
-PASS means present in inspected code and supported by the named tests and/or browser evidence; it does not certify the unpublished deployment.
+PASS means present in inspected code and supported by the named tests and/or browser evidence; it is not a production security certification.
 
 | Assignment Requirement | Status | Implementation |
 | --- | --- | --- |
@@ -91,4 +93,4 @@ Browser mutations used only `.devtools/responsive-final.sqlite`, not public or u
 
 ## Submission verdict
 
-The local implementation and automated gates pass. **NOT YET SAFE FOR FINAL SUBMISSION** as a published deliverable: the reviewed working tree must first be committed/pushed under the user's publishing authorization, deployed, and smoke-tested at the submission URL. There is no known failing local critical workflow from this pass. Do not treat earlier deployed evidence as proof of the new revision.
+Checkpoint verdict at the time: the local implementation and automated gates passed, but that working tree had not yet been published, so it was not then ready as a public deliverable. The later publication and demo verification are recorded in the final submission audit.

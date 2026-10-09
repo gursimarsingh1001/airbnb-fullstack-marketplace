@@ -1,6 +1,6 @@
 # Full-stack implementation and QA audit
 
-Audit date: **8 October 2026**. This is an evidence log for the changes in this working tree. “Verified” is limited to the checks below and is not a production security certification.
+Audit date: **9 October 2026**. This is a chronological evidence log; earlier sections describe earlier code states. The final submission verification at the end is the current status. “Verified” is limited to the checks listed and is not a production security certification.
 
 ## Baseline and preservation
 
@@ -112,9 +112,9 @@ Header-only refinement in Marketplace.tsx and globals.css: one shared form morph
 
 Verified locally: initial scrollY=0; slow scrolling (expanded at45, compact at81, stays compact at54); fast and repeated up/down scrolling; return to top restoring850px search; expanded and compact calendar actions; compact destination submission returning Goa stays; desktop1440, tablet768, mobile390 screenshots inspected. Main content document offset stayed288px before/after morph. No console errors captured. Frontend lint, nine tests, and production build/TypeScript passed. No reference recording was attached, so behavior follows the written specification rather than a frame-by-frame comparison.
 
-## Evaluator-style audit (9 October 2026)
+## Historical evaluator-style audit checkpoint (9 October 2026)
 
-This is the current status snapshot against the 25 requested evaluator categories. Earlier sections are historical records from earlier code states; this section reflects commit `d933fd1` plus the focused GET-retry change below. A green status means the behavior was implemented and exercised by the listed evidence, not that the entire application is certified or production-secure.
+This checkpoint records the 25-category review at commit `d933fd1` plus the focused GET-retry change. It is superseded by the final verification at the end of this file. A green status means the behavior was implemented and exercised by the listed evidence, not that the entire application is certified or production-secure.
 
 | # | Area | Status | Evidence and limits |
 |---:|---|:---:|---|
@@ -122,7 +122,7 @@ This is the current status snapshot against the 25 requested evaluator categorie
 | 2 | Filters | ✅ | Category and combined category/location search were exercised in the browser; clearing filters restored the catalogue. Source and backend regressions cover price, type, amenities, guest/date, and pagination combinations. |
 | 3 | Listing detail | ✅ | Direct local detail route displayed the gallery, description, location, host, amenities, rating/reviews, calendar and quote controls. The deployed `#listing/1` page also loaded its gallery, review panel, host details, availability and map in a read-only smoke check. |
 | 4 | Availability | ✅ | Local calendar marked past and booked nights unavailable; selected check-in/check-out and guest count survived refresh. Backend tests cover overlap boundaries and availability filtering. |
-| 5 | Booking validation | ✅ | 83 backend tests pass, including invalid/past dates, capacity, missing or removed homes, overlap shapes, back-to-back stays, concurrent attempts, ownership, quote changes and idempotency. |
+| 5 | Booking validation | ✅ | 82 backend tests passed at this checkpoint, including invalid/past dates, capacity, missing or removed homes, overlap shapes, back-to-back stays, concurrent attempts, ownership, quote changes and idempotency. |
 | 6 | Mock checkout | ✅ | Completed a local two-night home reservation for ₹13,212 (₹5,400 × 2 + ₹900 cleaning + ₹1,512 service); the confirmed summary matched. UI states that checkout is a demo and collects no payment credentials. |
 | 7 | My Trips | ✅ | The home booking plus experience and service confirmations appeared under the guest profile, survived a browser refresh, and stayed scoped from the host profile. One transient first-read connection failure was observed during a profile change; retry loaded the records. The API client now safely retries one failed GET once; a frontend API regression test verifies this behavior without replaying writes. Profile switching was rechecked after the fix. |
 | 8 | Database persistence | ✅ | The test browser used isolated `.devtools/evaluator-20261009.sqlite`; seeded rows, bookings, favorite and soft-deleted test listing were retained. Existing backend regressions verify persistence across app initialization/restart. The public database was not modified. |
@@ -142,7 +142,7 @@ This is the current status snapshot against the 25 requested evaluator categorie
 | 22 | Loading states | ✅ | Listing, host and activity components expose loading states before rendering data, with empty/error states after completion. Tested Trips transition and retry in the browser. |
 | 23 | TypeScript errors | ✅ | `npm run typecheck` and production Next build both passed after the change; 10 frontend tests also passed. |
 | 24 | Console errors | ✅ | Browser DevTools log query returned no warnings/errors on the local paths inspected after the fix; this was a targeted sample, not every route or browser. |
-| 25 | Backend errors | ✅ | `python -m pytest backend/tests -q`: 83 passed. Targeted local UI actions completed and server logs showed successful API responses; no 5xx was observed in those actions. This is not a claim that every possible production request is error-free. |
+| 25 | Backend errors | ✅ | `python -m pytest backend/tests -q`: 82 passed at this checkpoint. Targeted local UI actions completed and server logs showed successful API responses; no 5xx was observed in those actions. This is not a claim that every possible production request is error-free. |
 
 ### Findings and focused correction
 
@@ -177,5 +177,12 @@ Local browser work exercised home search/filtering, listing detail/calendar, the
 - Compact Experiences/Services search now summarizes a selected date as `12 Oct` (or `Any week`) and opens the native calendar when its compact summary is clicked. The raw date input is reduced to a 1×1 transparent control on desktop compact mode, preventing its browser-formatted value from colliding with neighboring sections; mobile keeps the normal date control.
 - Browser verification on local Services confirmed 20 cards, all 12 currently rendered photos loaded, no broken visible images, no horizontal overflow at the 1280 px viewport, `Any week` in the compact bar, and the compact date button opened the calendar. On Experiences, selecting 12 October displayed `12 Oct`; clicking the compact summary opened the calendar. No console warnings or errors were captured.
 - Isolated migration query verified counts, 93 distinct active host names, 93 distinct primary cover URLs, and seed versions through v3. Restart/idempotence and booking-preservation regression test passed. The focused regression suite now asserts offer titles, primary photos, host identities, and per-section content uniqueness.
-- Latest checks: 83 backend tests, 10 frontend tests, TypeScript, ESLint and the Next production build all passed. The changes are local and have not been published; the public demo remains on its previous deployment until a later authorized publish.
+- Checks recorded at this historical checkpoint: 83 backend tests, 10 frontend tests, TypeScript, ESLint and the Next production build passed. At that point the changes were local and unpublished; the final submission verification below records the later publication state.
 - Remaining limits for this refresh: third-party Unsplash/RandomUser availability is not guaranteed by the database; full remote production verification and fresh 390/768 viewport tests were not repeated in this focused pass.
+
+## Final submission verification (9 October 2026)
+
+- The audited application code is commit `86d9c42714fb807106645c51d583ead973925b50` on `main`. It was pushed to the public repository [gursimarsingh1001/airbnb-fullstack-marketplace](https://github.com/gursimarsingh1001/airbnb-fullstack-marketplace); the repository and production deployment were verified at that code revision before this documentation-only correction.
+- Re-ran checks against that application code: `python -m pytest backend/tests -q` — **86 passed**; `npm test` — **10 passed**; `npm run lint`, `npm run typecheck`, and `npm run build` — **passed**. The build generated the Next.js 16.4 static export successfully.
+- The GitHub Actions `Application checks` workflow passed on the published application revision: [run 37919375432](https://github.com/gursimarsingh1001/airbnb-fullstack-marketplace/actions/runs/37919375432). The live demo URL is [airbnb-fullstack-marketplace.vercel.app](https://airbnb-fullstack-marketplace.vercel.app/); the deployed health endpoint reported SQLite and the Asia/Kolkata date policy.
+- No application source or behavior changed in this final documentation correction. The results above are concrete verification, not a guarantee of literal perfection: real authentication/payments remain mocked, third-party image/tile availability is external, and exhaustive accessibility/browser/device testing was not performed.
