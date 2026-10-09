@@ -150,13 +150,13 @@ def test_restart_initialization_preserves_all_user_data(client):
     client.put(f"/api/wishlists/{home['id']}")
     # A fresh ASGI lifespan runs the same initialization a restarted server uses.
     with TestClient(app) as restarted:
-        assert restarted.get("/api/listings").json()["total"] == 241
+        assert restarted.get("/api/listings").json()["total"] == 273
         assert home["id"] in {h["id"] for h in restarted.get("/api/wishlists").json()}
         assert booking["id"] in {b["id"] for b in restarted.get("/api/bookings").json()}
         assert restarted.post("/api/bookings", json=stay(listing=home["id"])).status_code == 409
     with database.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 3
-        assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 280
+        assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 312
 
 
 @pytest.mark.parametrize("changes", [{"check_in": "2099-2-30"}, {"check_in": "2027-02-30"}, {"guests": 99}, {"nightly_price": -1}, {"service_fee": 0}, {"total": 1}, {"user_id": 2}])

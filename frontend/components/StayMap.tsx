@@ -24,7 +24,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
   // Stable value prevents quote/profile rerenders from recreating the map.
   const positions = JSON.stringify(visible.map(({ id, latitude, longitude, price, title, location }) => ({ id, latitude, longitude, price, title, location })));
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected = visible.find((h) => h.id === selectedId) || visible[0];
+  const selected = visible.find((h) => h.id === selectedId);
   const currentSelection = useRef(selected?.id);
   currentSelection.current = selected?.id;
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -72,7 +72,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
           const point = instance.latLngToLayerPoint([home.latitude, home.longitude]);
           const group = groups.find((items) => {
             const anchor = instance.latLngToLayerPoint([items[0].latitude, items[0].longitude]);
-            return Math.abs(point.x - anchor.x) < 112 && Math.abs(point.y - anchor.y) < 48;
+            return Math.abs(point.x - anchor.x) < 100 && Math.abs(point.y - anchor.y) < 64;
           });
           if (group) group.push(home); else groups.push([home]);
         });
@@ -80,10 +80,10 @@ export default function StayMap({ homes, onOpen, compact = false }: {
           const home = items[0], clustered = items.length > 1;
           // Text nodes avoid interpreting a listing's user-provided fields as HTML.
           const label = document.createElement("span");
-          label.textContent = clustered ? `${money(Math.min(...items.map((h) => h.price)))}+ · ${items.length}` : money(home.price);
-          const width = clustered ? 112 : 80;
+          label.textContent = clustered ? String(items.length) : money(home.price);
+          const width = clustered ? 44 : 80;
           const marker = L.marker([home.latitude, home.longitude], {
-            icon: L.divIcon({ className: `stay-price-pin${items.some((h) => h.id === currentSelection.current) ? " selected" : ""}`, html: label, iconSize: [width, 36], iconAnchor: [width / 2, 18] }),
+            icon: L.divIcon({ className: `stay-price-pin${clustered ? " stay-cluster-pin" : ""}${items.some((h) => h.id === currentSelection.current) ? " selected" : ""}`, html: label, iconSize: [width, clustered ? 44 : 36], iconAnchor: [width / 2, clustered ? 22 : 18] }),
             title: clustered ? `Zoom to ${items.length} homes, from ${money(Math.min(...items.map((h) => h.price)))}` : `${home.location} · ${money(home.price)} per night`,
             alt: clustered ? `Zoom to ${items.length} nearby homes` : `Preview ${home.title}`, keyboard: true,
           }).addTo(instance);
@@ -125,9 +125,9 @@ export default function StayMap({ homes, onOpen, compact = false }: {
 
   return <div className={`stay-map ${compact ? "stay-map-compact" : ""}`}>
     {!compact && <div className="stay-map-toolbar">
-      <div><strong>Find your place on the map</strong><span>{homes.length} matching homes across all pages · nightly prices</span></div>
-      <label className="map-region"><MapPin size={16} /><span className="sr-only">Map region</span>
-        <select aria-label="Map region" value={region} onChange={(event) => { setCountry(event.target.value); setSelectedId(null); setStatus("loading"); }}>{countries.map((name) => <option key={name}>{name}</option>)}</select>
+      <div><strong>Find your place on the map</strong><span>{visible.length} stays in {region} · Zoom in for nightly prices</span></div>
+      <label className="map-region"><MapPin size={16} /><span>Country</span>
+        <select aria-label="Map country" value={region} onChange={(event) => { setCountry(event.target.value); setSelectedId(null); setStatus("loading"); }}>{countries.map((name) => <option key={name} value={name}>{name} ({located.filter((h) => h.country === name).length})</option>)}</select>
       </label>
     </div>}
     <div className="stay-map-layout">
@@ -141,7 +141,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
       </div>}
       <div className="map-stage">
         <div ref={container} className="map-canvas" aria-label="Interactive map of approximate listing locations" />
-        <div className="map-caption"><MapPin size={13} /> Approximate demo locations</div>
+        <div className="map-caption"><MapPin size={13} /> Approximate locations · Tap a number to zoom</div>
         <div className="map-controls">
           <button aria-label="Zoom in" onClick={() => map.current?.zoomIn()}><Plus size={20} /></button>
           <button aria-label="Zoom out" onClick={() => map.current?.zoomOut()}><Minus size={20} /></button>
@@ -149,7 +149,7 @@ export default function StayMap({ homes, onOpen, compact = false }: {
         </div>
         {status === "loading" && <div className="map-status" role="status">Loading map…</div>}
         {status === "error" && <div className="map-status" role="status">The map couldn’t load. You can still explore these homes.<button onClick={() => { setStatus("loading"); setRetry((n) => n + 1); }}>Retry map</button></div>}
-        {!compact && selected && <div className="map-preview" aria-live="polite">
+        {!compact && selected && <div className="map-preview" aria-live="polite"><button className="map-preview-close" aria-label="Close home preview" onClick={() => setSelectedId(null)}>&times;</button>
           <SafeImage src={selected.photos[0]} alt={selected.title} />
           <div><span className="map-preview-location">{selected.location}</span><strong>{selected.title}</strong><span><b>{money(selected.price)}</b> / night <span className="map-preview-rating">★ {selected.rating?.toFixed(2) || "New"}</span></span><button onClick={() => onOpen?.(selected.id)}>View home <ArrowUpRight size={15} /></button></div>
         </div>}

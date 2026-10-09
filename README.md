@@ -18,7 +18,7 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 - Host dashboard, reservations, and listing creation, editing, and deletion. Photos can be supplied through HTTPS URLs or uploaded as JPEG, PNG, or WebP to the connected private Vercel Blob store (3 MB per image).
 - Four selectable demo profiles, including three hosts with independently owned homes.
 - Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, persistent dark mode, and an interactive map with price pins and home previews.
-- Seed data: 240 homes, six users, 280 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
+- Seed data: 272 homes, six users, 312 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ pip install -r backend/requirements.txt
 python -m uvicorn backend.main:app --reload --port 8001
 ```
 
-SQLite tables and sample data are created automatically on first start. Existing data is never cleared. Versioned additive catalogue upgrades add 24 and then 196 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
+SQLite tables and sample data are created automatically on first start. Existing data is never cleared. Versioned additive catalogue upgrades add 24, 196 and 32 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
 
 ### 2. Frontend (another terminal)
 

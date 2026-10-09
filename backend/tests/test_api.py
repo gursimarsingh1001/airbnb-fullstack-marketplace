@@ -47,7 +47,7 @@ def listing_payload():
 
 def test_search_filters_pagination_and_seed(client):
     first = client.get("/api/listings").json()
-    assert first["total"] == 240 and len(first["items"]) == 15
+    assert first["total"] == 272 and len(first["items"]) == 15
     second = client.get("/api/listings?page=2").json()
     assert len(second["items"]) == 15
     assert not ({x["id"] for x in first["items"]} & {x["id"] for x in second["items"]})
@@ -175,4 +175,4 @@ def test_bad_listing_rolls_back(client):
         json={**listing_payload(), "amenities": ["Invented amenity"]},
     )
     assert result.status_code == 422
-    assert client.get("/api/listings").json()["total"] == 240
+    assert client.get("/api/listings").json()["total"] == 272

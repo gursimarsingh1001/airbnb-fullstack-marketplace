@@ -1,6 +1,6 @@
 from test_api import client  # noqa: F401
 from backend import database
-from backend.catalogue import expand_catalogue, expand_large_catalogue
+from backend.catalogue import expand_catalogue, expand_large_catalogue, expand_regional_catalogue
 
 
 def test_sort_is_applied_before_pagination_and_filters(client):
@@ -22,10 +22,12 @@ def test_catalogue_expansion_is_idempotent_and_preserves_edits(client):
         db.execute("UPDATE listings SET title='An edited demo home' WHERE id=21")
         db.execute('UPDATE listings SET deleted=1 WHERE id=22')
         bookings = [tuple(row) for row in db.execute('SELECT * FROM bookings ORDER BY id')]
+        expand_regional_catalogue(db)
+        expand_regional_catalogue(db)
         expand_catalogue(db)
         expand_large_catalogue(db)
         expand_large_catalogue(db)
-        assert db.execute('SELECT COUNT(*) FROM listings').fetchone()[0] == 240
+        assert db.execute('SELECT COUNT(*) FROM listings').fetchone()[0] == 272
         assert db.execute('SELECT title FROM listings WHERE id=21').fetchone()[0] == 'An edited demo home'
         assert db.execute('SELECT deleted FROM listings WHERE id=22').fetchone()[0] == 1
         assert [tuple(row) for row in db.execute('SELECT * FROM bookings ORDER BY id')] == bookings
@@ -35,11 +37,11 @@ def test_catalogue_expansion_is_idempotent_and_preserves_edits(client):
 
 def test_all_map_pages_cover_catalogue(client):
     ids = []
-    for page in range(1, 6):
+    for page in range(1, 7):
         result = client.get(f'/api/listings?limit=50&page={page}').json()
-        assert result['total'] == 240 and result['pages'] == 5
+        assert result['total'] == 272 and result['pages'] == 6
         ids.extend(item['id'] for item in result['items'])
-    assert len(ids) == len(set(ids)) == 240
+    assert len(ids) == len(set(ids)) == 272
 
 
 def test_yesterday_rejected_at_india_midnight(client, monkeypatch):
@@ -58,3 +60,9 @@ def test_yesterday_rejected_at_india_midnight(client, monkeypatch):
     with pytest.raises(HTTPException) as error:
         validate_dates(yesterday, yesterday + timedelta(days=2))
     assert error.value.status_code == 422
+
+def test_regional_destinations_are_searchable_with_map_positions(client):
+    from backend.catalogue import REGIONAL_DESTINATIONS
+    for location, country, latitude, longitude in REGIONAL_DESTINATIONS:
+        result = client.get('/api/listings', params={'q': location.split(',')[0], 'limit': 50}).json()
+        assert any(h['country'] == country and h['latitude'] == latitude and h['longitude'] == longitude and h['photos'] for h in result['items']), location

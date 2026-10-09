@@ -92,3 +92,44 @@ def expand_large_catalogue(db):
         db.execute('INSERT INTO reviews(listing_id,user_id,rating,comment) VALUES(?,5,?,?)',
                    (lid, 4 if i % 5 == 0 else 5, 'A relaxing stay with comfortable rooms and a helpful host. We enjoyed exploring the area.'))
     db.execute("INSERT INTO demo_content_versions VALUES('catalogue-v3')")
+
+# Broaden coverage rather than placing more variants in the same resort towns.
+REGIONAL_DESTINATIONS = [
+    ('Delhi', 'India', 28.614, 77.209), ('Mumbai, Maharashtra', 'India', 19.076, 72.878),
+    ('Bengaluru, Karnataka', 'India', 12.972, 77.595), ('Hyderabad, Telangana', 'India', 17.385, 78.487),
+    ('Chennai, Tamil Nadu', 'India', 13.083, 80.271), ('Kolkata, West Bengal', 'India', 22.573, 88.364),
+    ('Ahmedabad, Gujarat', 'India', 23.023, 72.571), ('Varanasi, Uttar Pradesh', 'India', 25.318, 82.974),
+    ('Amritsar, Punjab', 'India', 31.634, 74.873), ('Lucknow, Uttar Pradesh', 'India', 26.847, 80.946),
+    ('Bhopal, Madhya Pradesh', 'India', 23.260, 77.413), ('Raipur, Chhattisgarh', 'India', 21.251, 81.630),
+    ('Ranchi, Jharkhand', 'India', 23.344, 85.310), ('Patna, Bihar', 'India', 25.594, 85.138),
+    ('Guwahati, Assam', 'India', 26.145, 91.736), ('Tawang, Arunachal Pradesh', 'India', 27.586, 91.859),
+    ('Imphal, Manipur', 'India', 24.817, 93.937), ('Aizawl, Mizoram', 'India', 23.728, 92.718),
+    ('Agartala, Tripura', 'India', 23.831, 91.287), ('Kohima, Nagaland', 'India', 25.675, 94.108),
+    ('Leh, Ladakh', 'India', 34.153, 77.577), ('Port Blair, Andaman Islands', 'India', 11.623, 92.726),
+    ('Puri, Odisha', 'India', 19.814, 85.831), ('Visakhapatnam, Andhra Pradesh', 'India', 17.687, 83.218),
+    ('Kathmandu', 'Nepal', 27.717, 85.324), ('Pokhara', 'Nepal', 28.210, 83.986),
+    ('Galle', 'Sri Lanka', 6.053, 80.221), ('Ella', 'Sri Lanka', 6.867, 81.047),
+    ('Phuket', 'Thailand', 7.881, 98.392), ('Chiang Mai', 'Thailand', 18.788, 98.985),
+    ('Bangkok', 'Thailand', 13.756, 100.502), ('Colombo', 'Sri Lanka', 6.927, 79.861),
+]
+
+
+def expand_regional_catalogue(db):
+    """32 new destinations, once; no updates to user-created content."""
+    if db.execute("SELECT 1 FROM demo_content_versions WHERE version='catalogue-v4'").fetchone():
+        return
+    for index, (location, country, latitude, longitude) in enumerate(REGIONAL_DESTINATIONS):
+        category = 'Amazing views' if index in (15, 16, 17, 19, 20, 25, 27) else 'Beachfront' if index in (21, 22, 23, 26, 28) else 'Design'
+        source = db.execute('SELECT * FROM listings WHERE category=? ORDER BY id LIMIT 1', (category,)).fetchone()
+        if not source:
+            continue
+        title = f"{['The sunlit home', 'A quiet corner', 'The open-window retreat', 'Your little getaway'][index % 4]} in {location.split(',')[0]}"
+        lid = db.execute('''INSERT INTO listings(host_id,title,description,location,country,category,
+            property_type,price,cleaning_fee,max_guests,bedrooms,beds,bathrooms,latitude,longitude,superhost)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (2 + index % 3, title, f'A fictional demo home in {location}, {country}. Settle into a comfortable private space with a kitchen, fresh linen and room to unwind. Photography is illustrative and the map position is approximate.',
+             location, country, category, source['property_type'], 3200 + index % 8 * 700, 650, 4, 2, 2, 2, latitude, longitude, int(index % 3 == 0))).lastrowid
+        db.execute('INSERT INTO photos(listing_id,url,position) SELECT ?,url,position FROM photos WHERE listing_id=?', (lid, source['id']))
+        db.execute('INSERT INTO listing_amenities SELECT ?,amenity_id FROM listing_amenities WHERE listing_id=?', (lid, source['id']))
+        db.execute('INSERT INTO reviews(listing_id,user_id,rating,comment) VALUES(?,5,5,?)', (lid, 'A comfortable base for exploring the area. We loved the relaxed mornings.'))
+    db.execute("INSERT INTO demo_content_versions VALUES('catalogue-v4')")

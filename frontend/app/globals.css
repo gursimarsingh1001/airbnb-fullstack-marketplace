@@ -3100,3 +3100,23 @@ td p {
   .host-grid, .trips-grid { grid-template-columns: minmax(0,1fr); }
   .map-modal { max-width: 100%; }
 }
+
+/* Destination discovery and a quieter country-level map. */
+.inspiration > p { color: var(--muted, #717171); font-size: 14px; line-height: 1.6; }
+.inspiration-tabs { display: flex; gap: 28px; overflow-x: auto; border-bottom: 1px solid #ddd; margin: 22px 0; }
+.inspiration-tabs button { flex-shrink: 0; padding: 12px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: inherit; font: inherit; font-size: 14px; min-height: 44px; }
+.inspiration-tabs button[aria-pressed="true"] { border-bottom-color: currentColor; font-weight: 700; }
+.inspiration .footer-destinations { row-gap: 24px; }
+.inspiration-note { margin-top: 24px; font-size: 12px !important; }
+.map-region { border-radius: 12px; flex-wrap: wrap; min-width: 180px; }
+.map-region > span:not(.sr-only) { font-size: 12px; font-weight: 600; }
+.map-region select { width: 100%; max-width: none; min-height: 28px; }
+.map-canvas .stay-cluster-pin { border: 3px solid white; box-shadow: 0 0 0 5px #ffffff70, 0 3px 9px #0002; background: #222; color: white; font-size: 14px; }
+.map-preview .map-preview-close { position: absolute; right: 6px; top: -15px; width: 30px; height: 30px; min-height: 30px; border-radius: 50%; background: white; border: 1px solid #ddd; display: grid; place-items: center; text-decoration: none; font-size: 22px; }
+@media(max-width:600px) {
+  .map-region { min-width: 130px; max-width: 145px; gap: 3px; }
+  .map-region select { max-width: 125px; font-size: 12px; }
+  .map-caption { max-width: calc(100% - 78px); font-size: 10px; }
+  .inspiration-tabs { gap: 22px; }
+  .inspiration .footer-destinations { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}

@@ -1,4 +1,5 @@
 "use client";
+import Inspiration from "./Inspiration";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
@@ -977,38 +978,12 @@ export default function Marketplace() {
       )}
       <footer>
         <div className="footer-main">
-          <div>
-            <h3>Inspiration for your next escape</h3>
-            <div className="footer-destinations">
-              {["Goa", "Manali", "Bali", "Coorg", "Udaipur", "Lonavala"].map(
-                (d) => (
-                  <button
-                    key={d}
-                    onClick={() => {
-                      setQ(d);
-                      setStart(""); setEnd(""); setGuests(1);
-                      setSearch({ q: d, start: "", end: "", guests: 1 });
-                      setCategory("");
-                      setFilters(defaultFilters);
-                      setPage(1);
-                      navigate("explore");
-                    }}
-                  >
-                    <strong>{d}</strong>
-                    <span>
-                      {d === "Bali"
-                        ? "Island getaways"
-                        : d === "Goa"
-                          ? "Beachside stays"
-                          : d === "Manali"
-                            ? "Mountain retreats"
-                            : "Homes & hideaways"}
-                    </span>
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
+          <Inspiration onChoose={(destination) => {
+            setQ(destination); setStart(""); setEnd(""); setGuests(1);
+            setSearch({ q: destination, start: "", end: "", guests: 1 });
+            setCategory(""); setFilters(defaultFilters); setPage(1); navigate("explore");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }} />
         </div>
         <div className="footer-bottom">
           <span>© 2026 Airbnb clone · An independent assignment project</span>

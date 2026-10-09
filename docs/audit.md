@@ -99,3 +99,9 @@ See [REQUIREMENTS.md](REQUIREMENTS.md) for feature-by-feature status and [README
 - This is targeted verification of the changed flows, not exhaustive testing of every device or browser. Earlier audit sections describe earlier releases and their former UTC policy.
 
 Deployment verification: published to https://airbnb-fullstack-marketplace.vercel.app/ and pushed to the public GitHub repository. Live health returned SQLite, booking_today 2026-10-09 and Asia/Kolkata. Live catalogue returned 239 active homes (prior removals preserved). Browser confirmed compact header top=0 and height=77px after scroll, with no captured console errors. No production bookings were created during this check.
+
+## Destination discovery and map follow-up
+
+Added five inspiration themes with searchable destination links. Added 32 fictional destinations through idempotent catalogue-v4, giving 272 homes and 312 reviews on a fresh seed. Coverage now includes central/eastern/northeastern India, Ladakh, Andamans and three additional countries; this is representative demo coverage, not exhaustive real inventory. Existing edits, removals and bookings remain untouched.
+
+Map country selection now has a visible label and per-country counts. Nearby homes use compact count circles, with price pins when zoomed in. Property previews appear only after selection and can be dismissed. Verified destination theme switching and Kathmandu search, country selection to Thailand, mobile India map at 390px with no horizontal overflow, and cluster zoom. No console errors captured in these local checks. Backend: 73 tests passed. Frontend: 9 tests passed; lint and production build including TypeScript passed.

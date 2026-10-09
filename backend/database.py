@@ -73,7 +73,7 @@ def initialize():
     from .blob_database import SnapshotConflict
     from .migrations import migrate
     from .seed import seed
-    from .catalogue import expand_catalogue, expand_large_catalogue
+    from .catalogue import expand_catalogue, expand_large_catalogue, expand_regional_catalogue
 
     # A single transaction protects both first seed and additive upgrades. Retry
     # a cloud cold-start race against the winner's snapshot, never reset data.
@@ -85,6 +85,7 @@ def initialize():
             seed(db)
             expand_catalogue(db)
             expand_large_catalogue(db)
+            expand_regional_catalogue(db)
             db.commit()
             return
         except SnapshotConflict:
