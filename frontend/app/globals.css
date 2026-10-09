@@ -3145,13 +3145,24 @@ td p {
   }
   .site-header.expanded.compact-search .search-bar strong { max-height: 0; opacity: 0; transform: translateY(-5px); }
   .site-header.expanded.compact-search .search-destination { padding: 10px 16px; gap: 0; flex: 1; }
-  .site-header.expanded.compact-search .search-segment { padding: 10px 12px; gap: 0; }
+  .site-header.expanded.compact-search .search-segment { padding: 10px 16px; gap: 0; justify-content: center; }
   .site-header.expanded .search-segment span, .site-header.expanded .search-destination input { transition: font-size var(--morph); }
-  .site-header.expanded.compact-search .search-segment span, .site-header.expanded.compact-search .search-destination input { font-size: 12px; }
+  .site-header.expanded.compact-search .search-segment span,
+  .site-header.expanded.compact-search .search-destination input {
+    color: #222222; font-size: 14px; font-weight: 600; line-height: 20px;
+  }
+  .site-header.expanded.compact-search .search-destination { justify-content: center; }
+  .site-header.expanded.compact-search .search-destination input::placeholder {
+    color: #222222; opacity: 1; font-weight: 600;
+  }
+  .site-header.expanded.compact-search .search-submit svg { width: 18px; height: 18px; stroke-width: 2.5; }
+  :root[data-theme="dark"] .site-header.expanded.compact-search .search-segment span,
+  :root[data-theme="dark"] .site-header.expanded.compact-search .search-destination input,
+  :root[data-theme="dark"] .site-header.expanded.compact-search .search-destination input::placeholder { color: #f5f5f5; }
   .site-header.expanded .checkout-segment { overflow: hidden; }
   .site-header.expanded.compact-search .checkout-segment { flex: 0 0 0px; padding-left: 0; padding-right: 0; opacity: 0; pointer-events: none; }
   .site-header.expanded .search-divider { flex-shrink: 0; transition: height var(--morph), width var(--morph), opacity var(--morph); }
-  .site-header.expanded.compact-search .search-divider { height: 24px; }
+  .site-header.expanded.compact-search .search-divider { height: 24px; background: #dddddd; }
   .site-header.expanded.compact-search .checkout-divider { width: 0; opacity: 0; }
   .site-header.expanded .search-submit { transition: width var(--morph), height var(--morph), margin var(--morph); }
   .site-header.expanded.compact-search .search-submit { width: 34px; height: 34px; margin-right: 7px; }
