@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, LocateFixed, MapPin, Minus, Plus, Star } from "lucide-react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import { Listing, money } from "@/lib/api";
-import { SafeImage } from "./UI";
+import { SafeImage } from "@/components/UI";
 import "leaflet/dist/leaflet.css";
 
 const hasPosition = (home: Listing) => Number.isFinite(home.latitude) && Number.isFinite(home.longitude)

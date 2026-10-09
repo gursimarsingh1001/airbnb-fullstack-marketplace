@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS listings (
  beds INTEGER NOT NULL CHECK(beds > 0), bathrooms INTEGER NOT NULL CHECK(bathrooms > 0),
  latitude REAL NOT NULL DEFAULT 0, longitude REAL NOT NULL DEFAULT 0,
  superhost INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0,
+ seeded INTEGER NOT NULL DEFAULT 0,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS photos (
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS reviews (
  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
  comment TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS reviews_listing ON reviews(listing_id,created_at);
 CREATE TABLE IF NOT EXISTS wishlists (
  user_id INTEGER NOT NULL REFERENCES users(id), listing_id INTEGER NOT NULL REFERENCES listings(id),
  PRIMARY KEY(user_id, listing_id)
@@ -75,7 +77,7 @@ def initialize():
     from .activity_schema import migrate_activities
     from .activity_seed import seed_activities
     from .seed import seed
-    from .catalogue import expand_catalogue, expand_large_catalogue, expand_regional_catalogue
+    from .curated_seed import seed_curated_marketplace
 
     # A single transaction protects both first seed and additive upgrades. Retry
     # a cloud cold-start race against the winner's snapshot, never reset data.
@@ -84,12 +86,11 @@ def initialize():
         try:
             db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA)
             migrate(db)
+            db.execute("CREATE TABLE IF NOT EXISTS demo_content_versions (version TEXT PRIMARY KEY)")
             seed(db)
-            expand_catalogue(db)
-            expand_large_catalogue(db)
-            expand_regional_catalogue(db)
             migrate_activities(db)
             seed_activities(db)
+            seed_curated_marketplace(db)
             db.commit()
             return
         except SnapshotConflict:

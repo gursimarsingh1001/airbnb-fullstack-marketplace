@@ -63,11 +63,15 @@ export const activityCategories: Record<ActivityKind, string[]> = {
   experiences: [
     "Food & drink",
     "Culture & history",
+    "History",
     "Nature & outdoors",
+    "Adventure",
+    "Photography",
     "Art & creativity",
     "Sports",
     "Wellness",
     "Nightlife",
+    "Music",
     "Hidden gems",
   ],
   services: [
@@ -75,11 +79,13 @@ export const activityCategories: Record<ActivityKind, string[]> = {
     "Photography",
     "Massage",
     "Personal training",
+    "Yoga",
     "Beauty",
     "Hair styling",
     "Spa & wellness",
     "Catering",
     "Private guides",
+    "Housekeeping",
   ],
 };
 export const kindLabel = (kind: ActivityKind) =>

@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import database
-from backend import main
+from backend.routers import photos as photo_routes
 from backend.booking_rules import booking_today
 from backend.main import app
 from test_api import client, listing_payload, stay
@@ -78,15 +78,16 @@ def test_changed_price_requires_checkout_review(client):
     body = stay()
     quote = client.post("/api/quote", json=body).json()
     with database.connect() as db:
-        db.execute("UPDATE listings SET price=price+100 WHERE id=4")
+        db.execute("UPDATE listings SET price=price+100 WHERE id=?", (body["listing_id"],))
     assert client.post("/api/bookings", json={**body, "expected_total": quote["total"]}).status_code == 409
-    assert not any(b["listing_id"] == 4 for b in client.get("/api/bookings").json())
+    assert not any(b["listing_id"] == body["listing_id"] for b in client.get("/api/bookings").json())
 
 
 def test_historical_price_and_private_scope(client):
-    response = client.post("/api/bookings", json=stay()).json()
+    body = stay()
+    response = client.post("/api/bookings", json=body).json()
     with database.connect() as db:
-        db.execute("UPDATE listings SET price=price+1000,cleaning_fee=2000 WHERE id=4")
+        db.execute("UPDATE listings SET price=price+1000,cleaning_fee=2000 WHERE id=?", (body["listing_id"],))
     own = next(b for b in client.get("/api/bookings").json() if b["id"] == response["id"])
     assert own["total"] == response["total"] and own["nightly_price"] == response["nightly_price"]
     assert "idempotency_key" not in own and "request_fingerprint" not in own
@@ -106,11 +107,11 @@ def test_combined_search_and_filtered_pagination(client):
     params = dict(q="Himachal", category="Cabins", property_type="Cabin", amenities="Wifi, Mountain view", min_price=6000, max_price=8000, guests=5, limit=1)
     pages = [client.get("/api/listings", params={**params, "page": page}).json() for page in (1, 2)]
     assert all(page["total"] == page["pages"] and page["total"] >= 2 for page in pages)
-    assert {page["items"][0]["id"] for page in pages} == {2, 13}
-    body = stay(listing=2)
+    assert {page["items"][0]["id"] for page in pages} == {22, 44}
+    body = stay(listing=22)
     assert client.post("/api/bookings", json=body).status_code == 201
     result = client.get("/api/listings", params={**params, "check_in": body["check_in"], "check_out": body["check_out"]}).json()
-    assert result["total"] == result["pages"] == pages[0]["total"] - 1 and result["items"][0]["id"] == 13
+    assert result["total"] == result["pages"] == pages[0]["total"] - 1 and result["items"][0]["id"] == 44
 
 
 def test_host_edit_replaces_relationships_atomically(client):
@@ -148,15 +149,17 @@ def test_restart_initialization_preserves_all_user_data(client):
     home = client.post("/api/host/listings", json=listing_payload(), headers=headers).json()
     booking = client.post("/api/bookings", json=stay(listing=home["id"])).json()
     client.put(f"/api/wishlists/{home['id']}")
+    with database.connect() as db:
+        review_count_before_restart = db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
     # A fresh ASGI lifespan runs the same initialization a restarted server uses.
     with TestClient(app) as restarted:
-        assert restarted.get("/api/listings").json()["total"] == 273
+        assert restarted.get("/api/listings").json()["total"] == 50
         assert home["id"] in {h["id"] for h in restarted.get("/api/wishlists").json()}
         assert booking["id"] in {b["id"] for b in restarted.get("/api/bookings").json()}
         assert restarted.post("/api/bookings", json=stay(listing=home["id"])).status_code == 409
     with database.connect() as db:
-        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 4
-        assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 312
+        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 5
+        assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == review_count_before_restart
 
 
 @pytest.mark.parametrize("changes", [{"check_in": "2099-2-30"}, {"check_in": "2027-02-30"}, {"guests": 99}, {"nightly_price": -1}, {"service_fee": 0}, {"total": 1}, {"user_id": 2}])
@@ -187,7 +190,8 @@ def test_date_policy_is_explicit_india(client):
 
 
 def test_only_guest_can_review_a_completed_stay_once_and_rating_aggregates(client):
-    booking = client.post("/api/bookings", json=stay()).json()
+    body_of_stay = stay()
+    booking = client.post("/api/bookings", json=body_of_stay).json()
     url = f"/api/bookings/{booking['id']}/review"
     body = {"rating": 4, "comment": "A lovely, peaceful stay."}
     assert client.post(url, json=body).status_code == 422
@@ -198,7 +202,12 @@ def test_only_guest_can_review_a_completed_stay_once_and_rating_aggregates(clien
             "UPDATE bookings SET check_in=?,check_out=? WHERE id=?",
             (str(booking_today() - timedelta(days=4)), str(booking_today() - timedelta(days=1)), booking["id"]),
         )
-    before = client.get("/api/listings/4").json()
+    listing_id = body_of_stay["listing_id"]
+    before = client.get(f"/api/listings/{listing_id}").json()
+    with database.connect() as db:
+        before_sum, before_count = db.execute(
+            "SELECT SUM(rating),COUNT(*) FROM reviews WHERE listing_id=?", (listing_id,)
+        ).fetchone()
     assert client.post(url, json={"rating": 6, "comment": "A lovely, peaceful stay."}).status_code == 422
     assert client.post(url, json={"rating": 5, "comment": "  short  "}).status_code == 422
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -207,10 +216,10 @@ def test_only_guest_can_review_a_completed_stay_once_and_rating_aggregates(clien
     response = next(result for result in attempts if result.status_code == 201)
     assert response.status_code == 201 and response.json()["booking_id"] == booking["id"]
     assert client.post(url, json=body).status_code == 409
-    after = client.get("/api/listings/4").json()
+    after = client.get(f"/api/listings/{listing_id}").json()
     assert after["review_count"] == before["review_count"] + 1
     assert after["reviews"][0]["comment"] == body["comment"]
-    expected = round((before["rating"] * before["review_count"] + body["rating"]) / after["review_count"], 2)
+    expected = round((before_sum + body["rating"]) / (before_count + 1), 2)
     assert after["rating"] == expected
     own = next(b for b in client.get("/api/bookings").json() if b["id"] == booking["id"])
     assert own["reviewed"] is True
@@ -251,7 +260,7 @@ def test_host_photo_upload_validates_content_and_serves_cached_image(client, mon
             assert requested_key == key
             return image
 
-    monkeypatch.setattr(main, "BlobStore", FakeBlobStore)
+    monkeypatch.setattr(photo_routes, "BlobStore", FakeBlobStore)
     upload = {"content_type": "image/png", "content_base64": __import__("base64").b64encode(image).decode()}
     assert client.post("/api/host/photos", json=upload).status_code == 403
     assert client.post("/api/host/photos", json={**upload, "content_base64": "%%%"}, headers={"X-Demo-User": "2"}).status_code == 422

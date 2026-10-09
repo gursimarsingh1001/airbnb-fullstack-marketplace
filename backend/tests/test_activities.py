@@ -68,8 +68,9 @@ def test_activity_seed_and_combined_search(client):
         result = client.get(
             "/api/activities", params={"kind": kind, "limit": 50}
         ).json()
-        assert result["total"] == 20 and all(
-            a["photos"] and a["review_count"] == 2 for a in result["items"]
+        expected_count = 24 if kind == "experiences" else 20
+        assert result["total"] == expected_count and all(
+            a["photos"] and a["review_count"] >= 100 for a in result["items"]
         )
         a = result["items"][0]
         detail = client.get(f"/api/activities/{a['id']}").json()
@@ -103,6 +104,26 @@ def test_activity_seed_and_combined_search(client):
     database.initialize()
     with database.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM activity_slots").fetchone()[0] == before
+
+
+@pytest.mark.parametrize("kind", ["experiences", "services"])
+def test_time_of_day_filters_respect_boundaries_and_remaining_capacity(client, kind):
+    offerings = {}
+    slots = {}
+    for time in ["11:00", "12:00", "16:00", "17:00"]:
+        offering, slot = create(client, kind, time)
+        offerings[time] = offering["id"]
+        slots[time] = slot
+
+    params = {"kind": kind, "q": "Test City", "people": 4}
+    for period, times in [("morning", ["11:00"]), ("afternoon", ["12:00", "16:00"]), ("evening", ["17:00"])]:
+        response = client.get("/api/activities", params={**params, "time_of_day": period})
+        assert response.status_code == 200
+        assert {item["id"] for item in response.json()["items"]} == {offerings[time] for time in times}
+
+    assert book(client, slots["12:00"], people=1).status_code == 201
+    response = client.get("/api/activities", params={**params, "time_of_day": "afternoon"})
+    assert {item["id"] for item in response.json()["items"]} == {offerings["16:00"]}
 
 
 def test_experience_capacity_price_history_persistence_and_idempotency(client):
@@ -351,9 +372,10 @@ def test_activity_database_guards_and_cancelled_retry(client):
 def test_activity_pagination_and_removed_availability_survive_restart(client):
     first = client.get("/api/activities?kind=experiences&page=1").json()
     second = client.get("/api/activities?kind=experiences&page=2").json()
-    assert len(first["items"]) == 12 and len(second["items"]) == 8
+    assert len(first["items"]) == 12 and len(second["items"]) == 12
     assert not {a["id"] for a in first["items"]} & {a["id"] for a in second["items"]}
-    a = client.get("/api/activities/1").json()
+    activity_id = first["items"][0]["id"]
+    a = client.get(f"/api/activities/{activity_id}").json()
     removed = a["slots"][0]["id"]
     p = {k: a[k] for k in payload() if k not in ("slots", "photos")}
     p["photos"] = a["photos"]
@@ -362,11 +384,13 @@ def test_activity_pagination_and_removed_availability_survive_restart(client):
     ]
     assert (
         client.put(
-            "/api/activities/host/1", json=p, headers={"X-Demo-User": "2"}
+            f"/api/activities/host/{activity_id}",
+            json=p,
+            headers={"X-Demo-User": str(a["host"]["id"])},
         ).status_code
         == 200
     )
     database.initialize()
     assert removed not in [
-        s["id"] for s in client.get("/api/activities/1").json()["slots"]
+        s["id"] for s in client.get(f"/api/activities/{activity_id}").json()["slots"]
     ]

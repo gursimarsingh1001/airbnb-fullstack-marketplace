@@ -101,3 +101,9 @@ def migrate(db):
               ) THEN RAISE(ABORT, 'Review requires a completed confirmed stay') END;
             END""")
         db.execute("INSERT INTO schema_migrations(version) VALUES(3)")
+
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version=5").fetchone():
+        columns = {row[1] for row in db.execute("PRAGMA table_info(listings)")}
+        if "seeded" not in columns:
+            db.execute("ALTER TABLE listings ADD COLUMN seeded INTEGER NOT NULL DEFAULT 0")
+        db.execute("INSERT INTO schema_migrations(version) VALUES(5)")

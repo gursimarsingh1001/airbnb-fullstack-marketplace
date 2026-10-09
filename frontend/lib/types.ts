@@ -1,0 +1,63 @@
+export type User = {
+  id: number;
+  name: string;
+  role: "guest" | "host";
+  avatar: string;
+  joined_year: number;
+};
+export type Review = {
+  id: number;
+  name: string;
+  avatar: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+};
+export type Listing = {
+  id: number;
+  host_id: number;
+  title: string;
+  description: string;
+  location: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+  category: string;
+  property_type: string;
+  price: number;
+  cleaning_fee: number;
+  max_guests: number;
+  bedrooms: number;
+  beds: number;
+  bathrooms: number;
+  superhost: number;
+  photos: string[];
+  amenities: string[];
+  host: User;
+  rating: number | null;
+  review_count: number;
+  reviews?: Review[];
+  unavailable?: { check_in: string; check_out: string }[];
+};
+export type Booking = {
+  id: number;
+  listing: Listing;
+  check_in: string;
+  check_out: string;
+  guests: number;
+  nightly_price: number;
+  cleaning_fee: number;
+  service_fee: number;
+  total: number;
+  status: string;
+  guest_name: string;
+  reviewed: boolean;
+};
+export type Quote = {
+  nights: number;
+  nightly_price: number;
+  subtotal: number;
+  cleaning_fee: number;
+  service_fee: number;
+  total: number;
+};

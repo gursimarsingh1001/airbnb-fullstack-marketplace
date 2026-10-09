@@ -11,15 +11,15 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 ## Features
 
 - Photo-first, responsive explore grid with category navigation, location/date/guest search, price/property/amenity filters, and pagination.
-- Detailed home views with five-photo galleries, amenities, host profiles, reviews, and a two-month availability calendar. Guests can review a confirmed stay after checkout.
+- Detailed home views with photo galleries, amenities, host profiles, reviews, and a two-month availability calendar. Guests can review a confirmed stay after checkout.
 - Server-priced checkout, persisted reservations, atomic overlap protection, booking confirmation, Trips, and cancellation.
 - Per-profile persisted wishlists. Search/filter state, selected stay dates/guests and unfinished host forms survive refresh in browser local storage. Submitted bookings and listings persist in SQLite. Cancelling a host form discards its local draft.
 - A large homepage search bar contracts into a sticky compact bar on scroll. Demo hosts and reviewers have illustrative portraits with initials as a fallback.
 - Host dashboard, reservations, and listing creation, editing, and deletion. Photos can be supplied through HTTPS URLs or uploaded as JPEG, PNG, or WebP to the connected private Vercel Blob store (3 MB per image).
 - Four selectable demo profiles, including three hosts with independently owned homes.
 - Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, persistent dark mode, and an interactive map with price pins and home previews.
-- Seed data: 272 homes, six users, 312 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
-- Experiences and Services are complete database-backed sections: 20 offerings each, reviews, future time slots, location/date/category/price/rating filters, galleries, favorites, server-priced mock checkout, and provider CRUD.
+- Seed data: 48 curated homes plus the original completed-stay demo home, 24 Experiences and 20 Services. Each of the 92 curated offers has a distinct host and cover image; the preserved review-demo home keeps its own host. The seed also includes varied reviews and amenities, four sample home bookings, and a saved home.
+- Experiences and Services are database-backed sections with 24 and 20 distinct offerings. They have varied hosts, fixed photo galleries, ratings/reviews, future time slots, search and filters, favorites, mock checkout, and provider CRUD.
 - Trips has Upcoming, Past, and Cancelled tabs for all three reservation types. Providers manage their own experiences/services and see the same reservations guests see.
 - Home filters also include bedrooms, beds, bathrooms, minimum/maximum rating, and Superhost status.
 
@@ -39,9 +39,9 @@ pip install -r backend/requirements.txt
 python -m uvicorn backend.main:app --reload --port 8001
 ```
 
-SQLite tables and sample data are created automatically on first start. Existing data is never cleared. Versioned additive catalogue upgrades add 24, 196 and 32 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
+SQLite tables and sample data are created automatically on first start. The versioned curated-catalogue migration adds 48 distinctive homes and archives the old template-generated demo clones with a soft-delete flag; their booking and review rows remain attached. User-created listings are preserved, and repeated startup does not add duplicate demo records. The original home with the completed review walkthrough remains available unless it was already removed. The default file is `backend/airbnb.db`.
 
-Migration 4 adds Experiences/Services without changing existing home records. Their seed creates 20 of each, two reviews per offering, two sample reservations, and a rolling 60-day availability horizon. Restarting extends the horizon; it does not recreate provider-removed slots or duplicate offerings. To run initialization explicitly: `python -c "from backend.database import initialize; initialize()"`. Do not delete the database to apply upgrades.
+Migration 4 adds Experiences/Services tables and constraints. A later idempotent content migration archives the old repeated demo offerings and seeds 24 Experiences plus 20 Services with stable availability slots for the next 60 days. Existing activity reservations and their snapshots remain in the database. To run initialization explicitly: `python -c "from backend.database import initialize; initialize()"`. Do not delete the database to apply upgrades.
 
 ### 2. Frontend (another terminal)
 
@@ -102,30 +102,48 @@ The included Docker configuration remains available for local or self-hosted use
 
 ```text
 frontend/
-  app/                  Next.js entry point, metadata, global responsive styles
+  app/                  Next.js entry pages, metadata and responsive styles
   components/
-    Marketplace.tsx     Navigation, explore/search, wishlist, trips, shared state
-    Detail.tsx          Gallery, availability, quote, checkout, confirmation
-    Host.tsx            Host dashboard and listing CRUD forms
-    UI.tsx              Cards, modal/focus trap, calendar, guest picker
-    activities/         Shared browse, detail, booking, trips and provider components
-  lib/api.ts            Typed API client, domain types, money/date helpers
-  lib/activities.ts     Typed experience/service API contracts and categories
+    Marketplace.tsx     Page composition, navigation and shared state
+    layout/             Header, logo and destination inspiration
+    search/             Home/activity search bars and home filter dialog
+    listings/           Cards, home details, gallery and checkout
+    bookings/           Calendar, guest picker and Trips page
+    host/               Host dashboard and listing CRUD forms
+    maps/               Interactive stay map
+    shared/             Dialogs, images, avatars, loading and empty states
+    activities/         Experience/Service browse, details, trips and provider UI
+    UI.tsx              Compatibility exports for existing imports
+  lib/api.ts            HTTP client and money/date helpers
+  lib/types.ts          Home, user, review, booking and quote contracts
+  lib/search.ts         Search types, defaults and display helpers
+  lib/activities.ts     Activity API contracts and categories
+  tests/                Frontend domain regression tests
 backend/
-  main.py               FastAPI routes, validation, pricing, authorization
-  database.py           SQLite connection, schema, indexes, initialization
-  blob_database.py      Private durable snapshots and optimistic concurrency
-  seed.py               Original fictional demo dataset
-  dependencies.py       Shared database connection and demo identity dependencies
-  activities.py         Experience/service router, input schemas and booking rules
-  activity_schema.py    Additive migration 4, constraints, indexes and triggers
-  activity_seed.py      Offerings, reviews and rolling availability seed
-  tests/test_api.py     Integration and concurrent booking tests
+  main.py               App lifecycle, middleware, errors and router registration
+  routers/              HTTP endpoints grouped by resource
+  schemas/              Pydantic home/activity request validation
+  services/             Availability, serialization and listing/activity operations
+  booking_rules.py      Home pricing, date policy and historical price helpers
+  dependencies.py       Database connection and demo identity dependencies
+  database.py           SQLite connection, schema and initialization
+  migrations.py         Versioned schema upgrades
+  blob_database.py      Durable snapshots and optimistic concurrency
+  seed.py               Original demo dataset and first-run users
+  curated_seed.py       Versioned curated homes, hosts and activity data
+  activity_schema.py    Activity constraints, indexes and triggers
+  activity_seed.py      Activity reviews and rolling availability
+  activities.py         Compatibility export for the activity router
+  tests/                API, business rules, concurrency and route-contract tests
 ```
 
 The Next.js App Router builds a static frontend shell. Client-side hash routes (`#explore`, `#listing/4`, `#trips`, `#wishlists`, `#host`) preserve browser back/forward and shareable home URLs. Experiences and Services use `/experiences`, `/services`, and `/{kind}/{id}` paths; Next development rewrites and production fallback routes support direct navigation/refresh. The browser talks directly to the Python API; **all business data resides in SQLite**. Local storage keeps the demo profile, theme and home/activity searches; activity filter drafts use session storage. Bookings and favorites are never stored only in the browser.
 
+See [Code organization](docs/code-organization.md) for the structural refactor, design decisions and verification results.
+
 ## Database schema
+
+For a plain-language explanation of the code and the main workflows, see [How the application works](docs/how-it-works.md). The final code-quality review and assignment matrix are in [the compliance report](docs/final-code-quality.md).
 
 ```mermaid
 erDiagram
@@ -154,8 +172,8 @@ erDiagram
 
 | Table | Important fields and constraints |
 | --- | --- |
-| `users` | ID, name, role (`guest`/`host`), avatar initials, joined year |
-| `listings` | Owner FK, title, description, location, country, category, property type, integer nightly price, cleaning fee, capacity, room counts, coordinates, soft-delete flag |
+| `users` | ID, name, role (`guest`/`host`), avatar initials or illustrative portrait URL, joined year |
+| `listings` | Owner FK, title, description, location, country, category, property type, integer nightly price, cleaning fee, capacity, room counts, coordinates, seeded-demo and soft-delete flags |
 | `photos` | Listing FK, URL, position; unique `(listing_id, position)` |
 | `amenities` | Unique amenity name |
 | `listing_amenities` | Composite primary key `(listing_id, amenity_id)` |
@@ -232,7 +250,7 @@ Provider request examples and an interview walkthrough are in [the three-section
 Quote request (`POST /api/quote`):
 
 ```json
-{"listing_id":4,"check_in":"2027-01-10","check_out":"2027-01-13","guests":2}
+{"listing_id":21,"check_in":"2027-01-10","check_out":"2027-01-13","guests":2}
 ```
 
 The response contains `nights`, `nightly_price`, `subtotal`, `cleaning_fee`, `service_fee`, `total`, and `currency`. Checkout sends that server-quoted total back as `expected_total`, and includes a unique `Idempotency-Key` header:
@@ -245,7 +263,7 @@ Content-Type: application/json
 ```
 
 ```json
-{"listing_id":4,"check_in":"2027-01-10","check_out":"2027-01-13","guests":2,"expected_total":19368}
+{"listing_id":21,"check_in":"2027-01-10","check_out":"2027-01-13","guests":2,"expected_total":54586}
 ```
 
 The API recomputes the price and checks that it still matches before inserting the reservation. A retry with the same key and identical request returns the same confirmation; using that key for changed checkout details returns `409`. The create response includes the reservation ID/status and the persisted price breakdown. An overlapping stay or changed quote also returns `409`; malformed or out-of-policy dates return `422`; an unknown listing returns `404`.

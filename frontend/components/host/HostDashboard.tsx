@@ -20,7 +20,7 @@ import {
   amenityNames,
   categories,
 } from "@/lib/api";
-import { Modal, Empty, SafeImage } from "./UI";
+import { Modal, Empty, SafeImage } from "@/components/UI";
 type Draft = {
   title: string;
   description: string;

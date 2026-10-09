@@ -49,6 +49,7 @@ STATEMENTS = [
  id INTEGER PRIMARY KEY, activity_id INTEGER NOT NULL REFERENCES activities(id),
  user_id INTEGER NOT NULL REFERENCES users(id), rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
  comment TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""",
+    "CREATE INDEX IF NOT EXISTS activity_reviews_listing ON activity_reviews(activity_id,created_at)",
     """CREATE TRIGGER IF NOT EXISTS activity_booking_guard BEFORE INSERT ON activity_bookings BEGIN
  SELECT CASE WHEN NOT EXISTS (
  SELECT 1 FROM activity_slots s JOIN activities a ON a.id=s.activity_id
@@ -79,6 +80,7 @@ STATEMENTS = [
 
 def migrate_activities(db):
     if db.execute("SELECT 1 FROM schema_migrations WHERE version=4").fetchone():
+        db.execute("CREATE INDEX IF NOT EXISTS activity_reviews_listing ON activity_reviews(activity_id,created_at)")
         return
     for statement in STATEMENTS:
         db.execute(statement)

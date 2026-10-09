@@ -1,31 +1,36 @@
 "use client";
-import Inspiration from "./Inspiration";
+import MarketplaceHeader from "./layout/MarketplaceHeader";
+import FilterModal from "./search/FilterModal";
+import HomeSearchBar from "./search/HomeSearchBar";
+import ActivitySearchBar from "./search/ActivitySearchBar";
+import Inspiration from "./layout/Inspiration";
 import ActivityBrowse from "./activities/ActivityBrowse";
 import ActivityDetail from "./activities/ActivityDetail";
 import ActivityCard from "./activities/ActivityCard";
 import ActivityHost from "./activities/ActivityHost";
-import ActivityTrips, { TripTab } from "./activities/ActivityTrips";
-import { Activity, ActivityKind, ActivitySearch, activityCategories } from "@/lib/activities";
+import { TripTab } from "./activities/ActivityTrips";
+import TripsPage from "./bookings/TripsPage";
+import {
+  Activity,
+  ActivityKind,
+  ActivitySearch,
+  activityCategories,
+} from "@/lib/activities";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
   Globe,
-  Menu,
   UserRound,
   ChevronRight,
   ArrowUpRight,
   Heart,
   Map,
-  Home,
   BriefcaseBusiness,
   Sparkles,
   SlidersHorizontal,
   X,
   Check,
-  CalendarDays,
   ArrowLeft,
-  Moon,
-  Sun,
 } from "lucide-react";
 import {
   api,
@@ -39,7 +44,6 @@ import {
   today,
 } from "@/lib/api";
 import {
-  Logo,
   Avatar,
   Modal,
   Calendar,
@@ -50,11 +54,14 @@ import {
   Loading,
   SafeImage,
 } from "./UI";
-import Detail from "./Detail";
-import Host from "./Host";
+import Detail from "./listings/ListingDetail";
+import Host from "./host/HostDashboard";
 import dynamic from "next/dynamic";
 
-const StayMap = dynamic(() => import("./StayMap"), { ssr: false, loading: () => <Loading /> });
+const StayMap = dynamic(() => import("./maps/StayMap"), {
+  ssr: false,
+  loading: () => <Loading />,
+});
 
 const guest: User = {
   id: 1,
@@ -63,21 +70,15 @@ const guest: User = {
   avatar: "AM",
   joined_year: 2024,
 };
-const defaultFilters = {
-  min: 0,
-  max: 1000000,
-  type: "",
-  amenities: [] as string[],
-  bedrooms: 0, beds: 0, bathrooms: 0, min_rating: 0, max_rating: 5, superhost: false,
-};
-type Filters = typeof defaultFilters;
-type SearchState = { q: string; start: string; end: string; guests: number };
-const searchStorageKey = "airbnb-search-v1";
+import {
+  defaultFilters,
+  Filters,
+  SearchState,
+  searchStorageKey,
+  emptySearch,
+  validDate,
+} from "@/lib/search";
 const themeStorageKey = "airbnb-theme-v1";
-const emptySearch: SearchState = { q: "", start: "", end: "", guests: 1 };
-function validDate(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
-}
 
 export default function Marketplace() {
   const [user, setUser] = useState<User>(guest),
@@ -89,7 +90,6 @@ export default function Marketplace() {
     [menu, setMenu] = useState(false),
     [modal, setModal] = useState(""),
     [toast, setToast] = useState(""),
-
     [q, setQ] = useState(""),
     [start, setStart] = useState(""),
     [end, setEnd] = useState(""),
@@ -128,13 +128,38 @@ export default function Marketplace() {
     [refresh, setRefresh] = useState(0),
     [mapView, setMapView] = useState(false);
   const [activityFavorites, setActivityFavorites] = useState<Activity[]>([]);
+  const [footerVisible, setFooterVisible] = useState(false);
+  const footerBottom = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const footer = footerBottom.current;
+    if (!footer) return;
+    const observer = new IntersectionObserver(([entry]) =>
+      setFooterVisible(entry.isIntersecting),
+    );
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
   const [activitySavedReady, setActivitySavedReady] = useState(false);
   const [tripTab, setTripTab] = useState<TripTab>("Upcoming");
-  const [activitySearch, setActivitySearch] = useState<ActivitySearch>({q:"",day:"",people:1});
-  const [activityQ, setActivityQ] = useState(""), [activityDay, setActivityDay] = useState(""), [activityPeople, setActivityPeople] = useState(1);
+  const [activitySearch, setActivitySearch] = useState<ActivitySearch>({
+    q: "",
+    day: "",
+    people: 1,
+  });
+  const [activityQ, setActivityQ] = useState(""),
+    [activityDay, setActivityDay] = useState(""),
+    [activityPeople, setActivityPeople] = useState(1);
   const [activityCategory, setActivityCategory] = useState("");
-  const activityKind: ActivityKind | null = /^(experiences)(\/[1-9]\d*)?$/.test(route) ? "experiences" : /^(services)(\/[1-9]\d*)?$/.test(route) ? "services" : null;
-  const activityId = /^(experiences|services)\/[1-9]\d*$/.test(route) ? Number(route.split("/")[1]) : null;
+  const activityKind: ActivityKind | null = /^(experiences)(\/[1-9]\d*)?$/.test(
+    route,
+  )
+    ? "experiences"
+    : /^(services)(\/[1-9]\d*)?$/.test(route)
+      ? "services"
+      : null;
+  const activityId = /^(experiences|services)\/[1-9]\d*$/.test(route)
+    ? Number(route.split("/")[1])
+    : null;
   const activityBrowse = route === "experiences" || route === "services";
   const headerSearch = route === "explore" || activityBrowse;
   useEffect(() => {
@@ -147,7 +172,9 @@ export default function Marketplace() {
         return current;
       });
     };
-    const onScroll = () => { if (!frame) frame = window.requestAnimationFrame(update); };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
@@ -167,61 +194,169 @@ export default function Marketplace() {
     try {
       const value = localStorage.getItem(themeStorageKey);
       if (value === "light" || value === "dark") saved = value;
-    } catch { /* The theme toggle still works for this visit. */ }
+    } catch {
+      /* The theme toggle still works for this visit. */
+    }
     setTheme(saved);
     document.documentElement.dataset.theme = saved;
   }, []);
   const navigate = (target: string) => {
-    const path = /^(experiences|services)(\/|$)/.test(target) ? `/${target}` : `/#${target}`;
+    const path = /^(experiences|services)(\/|$)/.test(target)
+      ? `/${target}`
+      : `/#${target}`;
     window.history.pushState(null, "", path);
-    setRoute(target); setMapView(false); setMenu(false); setModal("");
+    setRoute(target);
+    setMapView(false);
+    setMenu(false);
+    setModal("");
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   useEffect(() => {
     const controller = new AbortController();
     try {
-      const stored = JSON.parse(localStorage.getItem(searchStorageKey) || sessionStorage.getItem(searchStorageKey) || "null");
+      const stored = JSON.parse(
+        localStorage.getItem(searchStorageKey) ||
+          sessionStorage.getItem(searchStorageKey) ||
+          "null",
+      );
       if (stored) {
         const applied = stored.search || {};
-        const datesValid = validDate(applied.start) && validDate(applied.end) && applied.start >= today() && applied.end > applied.start;
+        const datesValid =
+          validDate(applied.start) &&
+          validDate(applied.end) &&
+          applied.start >= today() &&
+          applied.end > applied.start;
         const restored: SearchState = {
           q: typeof applied.q === "string" ? applied.q.slice(0, 100) : "",
-          start: datesValid ? applied.start : "", end: datesValid ? applied.end : "",
-          guests: Number.isInteger(applied.guests) && applied.guests >= 1 && applied.guests <= 16 ? applied.guests : 1,
+          start: datesValid ? applied.start : "",
+          end: datesValid ? applied.end : "",
+          guests:
+            Number.isInteger(applied.guests) &&
+            applied.guests >= 1 &&
+            applied.guests <= 16
+              ? applied.guests
+              : 1,
         };
-        setSearch(restored); setQ(restored.q); setStart(restored.start); setEnd(restored.end); setGuests(restored.guests);
+        setSearch(restored);
+        setQ(restored.q);
+        setStart(restored.start);
+        setEnd(restored.end);
+        setGuests(restored.guests);
         if (categories.includes(stored.category)) setCategory(stored.category);
-        if (stored.filters && Number.isInteger(stored.filters.min) && Number.isInteger(stored.filters.max) && stored.filters.min >= 0 && stored.filters.max >= stored.filters.min && stored.filters.max <= 1000000) {
-          setFilters({ ...defaultFilters, min: stored.filters.min, max: stored.filters.max,
-            bedrooms: Number.isInteger(stored.filters.bedrooms) && stored.filters.bedrooms >= 0 && stored.filters.bedrooms <= 20 ? stored.filters.bedrooms : 0,
-            beds: Number.isInteger(stored.filters.beds) && stored.filters.beds >= 0 && stored.filters.beds <= 30 ? stored.filters.beds : 0,
-            bathrooms: Number.isInteger(stored.filters.bathrooms) && stored.filters.bathrooms >= 0 && stored.filters.bathrooms <= 20 ? stored.filters.bathrooms : 0,
-            min_rating: typeof stored.filters.min_rating === "number" && stored.filters.min_rating >= 0 && stored.filters.min_rating <= 5 ? stored.filters.min_rating : 0,
-            max_rating: typeof stored.filters.max_rating === "number" && stored.filters.max_rating >= 0 && stored.filters.max_rating <= 5 ? stored.filters.max_rating : 5,
+        if (
+          stored.filters &&
+          Number.isInteger(stored.filters.min) &&
+          Number.isInteger(stored.filters.max) &&
+          stored.filters.min >= 0 &&
+          stored.filters.max >= stored.filters.min &&
+          stored.filters.max <= 1000000
+        ) {
+          setFilters({
+            ...defaultFilters,
+            min: stored.filters.min,
+            max: stored.filters.max,
+            bedrooms:
+              Number.isInteger(stored.filters.bedrooms) &&
+              stored.filters.bedrooms >= 0 &&
+              stored.filters.bedrooms <= 20
+                ? stored.filters.bedrooms
+                : 0,
+            beds:
+              Number.isInteger(stored.filters.beds) &&
+              stored.filters.beds >= 0 &&
+              stored.filters.beds <= 30
+                ? stored.filters.beds
+                : 0,
+            bathrooms:
+              Number.isInteger(stored.filters.bathrooms) &&
+              stored.filters.bathrooms >= 0 &&
+              stored.filters.bathrooms <= 20
+                ? stored.filters.bathrooms
+                : 0,
+            min_rating:
+              typeof stored.filters.min_rating === "number" &&
+              stored.filters.min_rating >= 0 &&
+              stored.filters.min_rating <= 5
+                ? stored.filters.min_rating
+                : 0,
+            max_rating:
+              typeof stored.filters.max_rating === "number" &&
+              stored.filters.max_rating >= 0 &&
+              stored.filters.max_rating <= 5
+                ? stored.filters.max_rating
+                : 5,
             superhost: stored.filters.superhost === true,
-            type: ["Villa", "Cabin", "Cottage", "Apartment", "Tiny home"].includes(stored.filters.type) ? stored.filters.type : "",
-            amenities: Array.isArray(stored.filters.amenities) ? stored.filters.amenities.filter((a: string) => amenityNames.includes(a)) : [],
+            type: [
+              "Villa",
+              "Cabin",
+              "Cottage",
+              "Apartment",
+              "Tiny home",
+            ].includes(stored.filters.type)
+              ? stored.filters.type
+              : "",
+            amenities: Array.isArray(stored.filters.amenities)
+              ? stored.filters.amenities.filter((a: string) =>
+                  amenityNames.includes(a),
+                )
+              : [],
           });
         }
         if (stored.draft) {
           const d = stored.draft;
           if (typeof d.q === "string") setQ(d.q.slice(0, 100));
-          if (validDate(d.start) && d.start >= today()) { setStart(d.start); if (validDate(d.end) && d.end > d.start) setEnd(d.end); }
-          if (Number.isInteger(d.guests) && d.guests >= 1 && d.guests <= 16) setGuests(d.guests);
+          if (validDate(d.start) && d.start >= today()) {
+            setStart(d.start);
+            if (validDate(d.end) && d.end > d.start) setEnd(d.end);
+          }
+          if (Number.isInteger(d.guests) && d.guests >= 1 && d.guests <= 16)
+            setGuests(d.guests);
         }
-        if (Number.isInteger(stored.page) && stored.page > 0) setPage(stored.page);
-        if (["recommended", "price_low", "price_high", "rating"].includes(stored.sort)) setSort(stored.sort);
+        if (Number.isInteger(stored.page) && stored.page > 0)
+          setPage(stored.page);
+        if (
+          ["recommended", "price_low", "price_high", "rating"].includes(
+            stored.sort,
+          )
+        )
+          setSort(stored.sort);
       }
-    } catch { /* Browsing still works when session storage is unavailable. */ }
+    } catch {
+      /* Browsing still works when session storage is unavailable. */
+    }
     try {
-      const saved = JSON.parse(localStorage.getItem("airbnb-activity-search-v1") || "null");
+      const saved = JSON.parse(
+        localStorage.getItem("airbnb-activity-search-v1") || "null",
+      );
       if (saved) {
-        const restored: ActivitySearch = { q: typeof saved.q === "string" ? saved.q.slice(0,100) : "", day: validDate(saved.day) && saved.day >= today() ? saved.day : "", people: Number.isInteger(saved.people) && saved.people > 0 && saved.people <= 16 ? saved.people : 1, category: activityCategories.services.includes(saved.category) ? saved.category : undefined };
-        setActivitySearch(restored); setActivityQ(restored.q); setActivityDay(restored.day); setActivityPeople(restored.people); setActivityCategory(restored.category || "");
+        const restored: ActivitySearch = {
+          q: typeof saved.q === "string" ? saved.q.slice(0, 100) : "",
+          day: validDate(saved.day) && saved.day >= today() ? saved.day : "",
+          people:
+            Number.isInteger(saved.people) &&
+            saved.people > 0 &&
+            saved.people <= 16
+              ? saved.people
+              : 1,
+          category: activityCategories.services.includes(saved.category)
+            ? saved.category
+            : undefined,
+        };
+        setActivitySearch(restored);
+        setActivityQ(restored.q);
+        setActivityDay(restored.day);
+        setActivityPeople(restored.people);
+        setActivityCategory(restored.category || "");
       }
-    } catch { /* Search remains usable without browser storage. */ }
+    } catch {
+      /* Search remains usable without browser storage. */
+    }
     const change = () => {
-      setRoute(window.location.hash.slice(1) || window.location.pathname.replace(/^\/|\/$/g, "") || "explore");
+      setRoute(
+        window.location.hash.slice(1) ||
+          window.location.pathname.replace(/^\/|\/$/g, "") ||
+          "explore",
+      );
       setMapView(false);
     };
     change();
@@ -232,38 +367,97 @@ export default function Marketplace() {
         if (controller.signal.aborted) return;
         setUsers(list);
         let id = 1;
-        try { id = Number(localStorage.getItem("airbnb-demo-user")); } catch { /* Fall back to the guest profile. */ }
+        try {
+          id = Number(localStorage.getItem("airbnb-demo-user"));
+        } catch {
+          /* Fall back to the guest profile. */
+        }
         const profile = list.find((u) => u.id === id) || guest;
         currentUser.current = profile.id;
         setUser(profile);
       })
-      .catch((e) => { if (!controller.signal.aborted) notify(e.message); })
-      .finally(() => { if (!controller.signal.aborted) setReady(true); });
-    return () => { controller.abort(); window.removeEventListener("hashchange", change); window.removeEventListener("popstate", change); };
+      .catch((e) => {
+        if (!controller.signal.aborted) notify(e.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setReady(true);
+      });
+    return () => {
+      controller.abort();
+      window.removeEventListener("hashchange", change);
+      window.removeEventListener("popstate", change);
+    };
   }, [notify]);
   useEffect(() => {
     if (!ready) return;
-    try { localStorage.setItem(searchStorageKey, JSON.stringify({ search, category, filters, page, sort, draft: { q, start, end, guests } })); } catch { /* Search works without browser storage. */ }
+    try {
+      localStorage.setItem(
+        searchStorageKey,
+        JSON.stringify({
+          search,
+          category,
+          filters,
+          page,
+          sort,
+          draft: { q, start, end, guests },
+        }),
+      );
+    } catch {
+      /* Search works without browser storage. */
+    }
   }, [ready, search, category, filters, page, sort, q, start, end, guests]);
   useEffect(() => {
-    if(ready)try{localStorage.setItem("airbnb-activity-search-v1",JSON.stringify(activitySearch));}catch{/* optional */}
-  },[ready,activitySearch]);
+    if (ready)
+      try {
+        localStorage.setItem(
+          "airbnb-activity-search-v1",
+          JSON.stringify(activitySearch),
+        );
+      } catch {
+        /* optional */
+      }
+  }, [ready, activitySearch]);
   useEffect(() => {
     if (!ready) return;
-    const c = new AbortController(); setActivitySavedReady(false);
-    api<Activity[]>("/activities/favorites", user.id, "GET", undefined, {signal:c.signal})
-      .then(items=>{setActivityFavorites(items);setActivitySavedReady(true);})
-      .catch(e=>{if(!c.signal.aborted)notify(e.message);});
-    return()=>c.abort();
-  },[ready,user.id,refresh,notify]);
+    const c = new AbortController();
+    setActivitySavedReady(false);
+    api<Activity[]>("/activities/favorites", user.id, "GET", undefined, {
+      signal: c.signal,
+    })
+      .then((items) => {
+        setActivityFavorites(items);
+        setActivitySavedReady(true);
+      })
+      .catch((e) => {
+        if (!c.signal.aborted) notify(e.message);
+      });
+    return () => c.abort();
+  }, [ready, user.id, refresh, notify]);
   async function toggleActivitySave(a: Activity) {
-    if(!activitySavedReady){notify("Favorites are still loading. Please try again.");return;}
-    const key=`activity/${user.id}/${a.id}`;
-    if(pendingSaves.current.has(key))return;
+    if (!activitySavedReady) {
+      notify("Favorites are still loading. Please try again.");
+      return;
+    }
+    const key = `activity/${user.id}/${a.id}`;
+    if (pendingSaves.current.has(key)) return;
     pendingSaves.current.add(key);
-    const saved=activityFavorites.some(v=>v.id===a.id);
-    try{await api(`/activities/favorites/${a.id}`,user.id,saved?"DELETE":"PUT");if(currentUser.current!==user.id)return;setActivityFavorites(list=>saved?list.filter(v=>v.id!==a.id):[...list,a]);notify(saved?"Removed from wishlist.":"Saved to wishlist.");}
-    catch(e){notify((e as Error).message);}finally{pendingSaves.current.delete(key);}
+    const saved = activityFavorites.some((v) => v.id === a.id);
+    try {
+      await api(
+        `/activities/favorites/${a.id}`,
+        user.id,
+        saved ? "DELETE" : "PUT",
+      );
+      if (currentUser.current !== user.id) return;
+      setActivityFavorites((list) =>
+        saved ? list.filter((v) => v.id !== a.id) : [...list, a],
+      );
+      notify(saved ? "Removed from wishlist." : "Saved to wishlist.");
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      pendingSaves.current.delete(key);
+    }
   }
   useEffect(() => {
     if (!toast) return;
@@ -283,7 +477,12 @@ export default function Marketplace() {
       max_price: String(filters.max),
       property_type: filters.type,
       amenities: filters.amenities.join(","),
-      bedrooms: String(filters.bedrooms), beds: String(filters.beds), bathrooms: String(filters.bathrooms), min_rating: String(filters.min_rating), max_rating: String(filters.max_rating), superhost: String(filters.superhost),
+      bedrooms: String(filters.bedrooms),
+      beds: String(filters.beds),
+      bathrooms: String(filters.bathrooms),
+      min_rating: String(filters.min_rating),
+      max_rating: String(filters.max_rating),
+      superhost: String(filters.superhost),
       page: String(page),
       limit: "15",
       sort,
@@ -317,43 +516,84 @@ export default function Marketplace() {
   useEffect(() => {
     if (!mapView) return;
     const controller = new AbortController();
-    setMapLoading(true); setMapError(""); setMapHomes([]);
-    const params = new URLSearchParams({ q: search.q, category, guests: String(search.guests),
-      min_price: String(filters.min), max_price: String(filters.max), property_type: filters.type,
-      amenities: filters.amenities.join(","), bedrooms: String(filters.bedrooms), beds: String(filters.beds), bathrooms: String(filters.bathrooms), min_rating: String(filters.min_rating), max_rating: String(filters.max_rating), superhost: String(filters.superhost), limit: "50", sort });
-    if (search.start && search.end) { params.set("check_in", search.start); params.set("check_out", search.end); }
+    setMapLoading(true);
+    setMapError("");
+    setMapHomes([]);
+    const params = new URLSearchParams({
+      q: search.q,
+      category,
+      guests: String(search.guests),
+      min_price: String(filters.min),
+      max_price: String(filters.max),
+      property_type: filters.type,
+      amenities: filters.amenities.join(","),
+      bedrooms: String(filters.bedrooms),
+      beds: String(filters.beds),
+      bathrooms: String(filters.bathrooms),
+      min_rating: String(filters.min_rating),
+      max_rating: String(filters.max_rating),
+      superhost: String(filters.superhost),
+      limit: "50",
+      sort,
+    });
+    if (search.start && search.end) {
+      params.set("check_in", search.start);
+      params.set("check_out", search.end);
+    }
     async function loadMap() {
       const collected: Listing[] = [];
       let count = 1;
       for (let p = 1; p <= count; p++) {
         params.set("page", String(p));
-        const result = await api<{ items: Listing[]; pages: number }>("/listings?" + params, user.id, "GET", undefined, { signal: controller.signal });
-        count = result.pages; collected.push(...result.items);
+        const result = await api<{ items: Listing[]; pages: number }>(
+          "/listings?" + params,
+          user.id,
+          "GET",
+          undefined,
+          { signal: controller.signal },
+        );
+        count = result.pages;
+        collected.push(...result.items);
       }
       if (!controller.signal.aborted) setMapHomes(collected);
     }
-    void loadMap().catch((e) => { if (!controller.signal.aborted) setMapError(e.message); })
-      .finally(() => { if (!controller.signal.aborted) setMapLoading(false); });
+    void loadMap()
+      .catch((e) => {
+        if (!controller.signal.aborted) setMapError(e.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMapLoading(false);
+      });
     return () => controller.abort();
   }, [mapView, search, category, filters, sort, user.id, refresh]);
   useEffect(() => {
     if (!ready) return;
     let active = true;
-    setWishlistLoading(true); setWishlistError("");
+    setWishlistLoading(true);
+    setWishlistError("");
     api<Listing[]>("/wishlists", user.id)
       .then((r) => {
         if (active) setWishlist(r);
       })
-      .catch((e) => { if (active) setWishlistError(e.message); })
-      .finally(() => { if (active) setWishlistLoading(false); });
+      .catch((e) => {
+        if (active) setWishlistError(e.message);
+      })
+      .finally(() => {
+        if (active) setWishlistLoading(false);
+      });
     if (route === "trips") {
-      setTripsLoading(true); setTripsError("");
+      setTripsLoading(true);
+      setTripsError("");
       api<Booking[]>("/bookings", user.id)
         .then((r) => {
           if (active) setTrips(r);
         })
-        .catch((e) => { if (active) setTripsError(e.message); })
-        .finally(() => { if (active) setTripsLoading(false); });
+        .catch((e) => {
+          if (active) setTripsError(e.message);
+        })
+        .finally(() => {
+          if (active) setTripsLoading(false);
+        });
     }
     return () => {
       active = false;
@@ -367,7 +607,10 @@ export default function Marketplace() {
     return () => window.removeEventListener("keydown", close);
   }, []);
   async function toggleSave(h: Listing) {
-    if (!ready || wishlistLoading || wishlistError) { notify("Your wishlist is still loading. Please try again shortly."); return; }
+    if (!ready || wishlistLoading || wishlistError) {
+      notify("Your wishlist is still loading. Please try again shortly.");
+      return;
+    }
     const pendingKey = `${user.id}/${h.id}`;
     if (pendingSaves.current.has(pendingKey)) return;
     pendingSaves.current.add(pendingKey);
@@ -393,8 +636,15 @@ export default function Marketplace() {
       notify("Choose both check-in and checkout to search.");
       return;
     }
-    if (start && (start < today() || end <= start || (Date.parse(end) - Date.parse(start)) / 86400000 > 90)) {
-      setModal("dates"); notify("Choose a future stay between 1 and 90 nights."); return;
+    if (
+      start &&
+      (start < today() ||
+        end <= start ||
+        (Date.parse(end) - Date.parse(start)) / 86400000 > 90)
+    ) {
+      setModal("dates");
+      notify("Choose a future stay between 1 and 90 nights.");
+      return;
     }
     setSearch({ q: q.trim(), start, end, guests });
     setPage(1);
@@ -413,10 +663,19 @@ export default function Marketplace() {
   function switchUser(u: User, target?: string) {
     currentUser.current = u.id;
     setUser(u);
-    if (u.id !== user.id) { setWishlist([]); setTrips([]); setWishlistLoading(true); setTripsLoading(true); }
+    if (u.id !== user.id) {
+      setWishlist([]);
+      setTrips([]);
+      setWishlistLoading(true);
+      setTripsLoading(true);
+    }
     setCancel(null);
     setReviewing(null);
-    try { localStorage.setItem("airbnb-demo-user", String(u.id)); } catch { /* Keep the profile for this session. */ }
+    try {
+      localStorage.setItem("airbnb-demo-user", String(u.id));
+    } catch {
+      /* Keep the profile for this session. */
+    }
     setModal("");
     setMenu(false);
     notify(`You’re browsing as ${u.name}.`);
@@ -470,19 +729,98 @@ export default function Marketplace() {
   const filterCount =
     (filters.min > 0 || filters.max < 1000000 ? 1 : 0) +
     (filters.type ? 1 : 0) +
-    filters.amenities.length + [filters.bedrooms, filters.beds, filters.bathrooms, filters.min_rating, filters.max_rating < 5, filters.superhost].filter(Boolean).length;
+    filters.amenities.length +
+    [
+      filters.bedrooms,
+      filters.beds,
+      filters.bathrooms,
+      filters.min_rating,
+      filters.max_rating < 5,
+      filters.superhost,
+    ].filter(Boolean).length;
   const isExplore = route === "explore";
-  const activeFilters: { key: string; label: string; remove: () => void }[] = [];
-  if (category) activeFilters.push({ key: "category", label: category, remove: () => setCategory("") });
-  if (search.q) activeFilters.push({ key: "location", label: search.q, remove: () => { setQ(""); setSearch((s) => ({ ...s, q: "" })); } });
-  if (search.start) activeFilters.push({ key: "dates", label: `${prettyDate(search.start)} – ${prettyDate(search.end)}`, remove: () => { setStart(""); setEnd(""); setSearch((s) => ({ ...s, start: "", end: "" })); } });
-  if (search.guests > 1) activeFilters.push({ key: "guests", label: `${search.guests} guests`, remove: () => { setGuests(1); setSearch((s) => ({ ...s, guests: 1 })); } });
-  if (filters.min > 0 || filters.max < 1000000) activeFilters.push({ key: "price", label: filters.max === 1000000 ? `From ${money(filters.min)} / night` : `${money(filters.min)} – ${money(filters.max)} / night`, remove: () => setFilters((f) => ({ ...f, min: 0, max: 1000000 })) });
-  if (filters.type) activeFilters.push({ key: "type", label: filters.type, remove: () => setFilters((f) => ({ ...f, type: "" })) });
-  (["bedrooms", "beds", "bathrooms"] as const).forEach(key=>{if(filters[key])activeFilters.push({key,label:`${filters[key]}+ ${key}`,remove:()=>setFilters(f=>({...f,[key]:0}))});});
-  if(filters.min_rating || filters.max_rating<5) activeFilters.push({key:"rating",label:`Rating ${filters.min_rating}–${filters.max_rating}`,remove:()=>setFilters(f=>({...f,min_rating:0,max_rating:5}))});
-  if(filters.superhost) activeFilters.push({key:"superhost",label:"Superhost",remove:()=>setFilters(f=>({...f,superhost:false}))});
-  filters.amenities.forEach((amenity) => activeFilters.push({ key: `amenity-${amenity}`, label: amenity, remove: () => setFilters((f) => ({ ...f, amenities: f.amenities.filter((a) => a !== amenity) })) }));
+  const activeFilters: { key: string; label: string; remove: () => void }[] =
+    [];
+  if (category)
+    activeFilters.push({
+      key: "category",
+      label: category,
+      remove: () => setCategory(""),
+    });
+  if (search.q)
+    activeFilters.push({
+      key: "location",
+      label: search.q,
+      remove: () => {
+        setQ("");
+        setSearch((s) => ({ ...s, q: "" }));
+      },
+    });
+  if (search.start)
+    activeFilters.push({
+      key: "dates",
+      label: `${prettyDate(search.start)} – ${prettyDate(search.end)}`,
+      remove: () => {
+        setStart("");
+        setEnd("");
+        setSearch((s) => ({ ...s, start: "", end: "" }));
+      },
+    });
+  if (search.guests > 1)
+    activeFilters.push({
+      key: "guests",
+      label: `${search.guests} guests`,
+      remove: () => {
+        setGuests(1);
+        setSearch((s) => ({ ...s, guests: 1 }));
+      },
+    });
+  if (filters.min > 0 || filters.max < 1000000)
+    activeFilters.push({
+      key: "price",
+      label:
+        filters.max === 1000000
+          ? `From ${money(filters.min)} / night`
+          : `${money(filters.min)} – ${money(filters.max)} / night`,
+      remove: () => setFilters((f) => ({ ...f, min: 0, max: 1000000 })),
+    });
+  if (filters.type)
+    activeFilters.push({
+      key: "type",
+      label: filters.type,
+      remove: () => setFilters((f) => ({ ...f, type: "" })),
+    });
+  (["bedrooms", "beds", "bathrooms"] as const).forEach((key) => {
+    if (filters[key])
+      activeFilters.push({
+        key,
+        label: `${filters[key]}+ ${key}`,
+        remove: () => setFilters((f) => ({ ...f, [key]: 0 })),
+      });
+  });
+  if (filters.min_rating || filters.max_rating < 5)
+    activeFilters.push({
+      key: "rating",
+      label: `Rating ${filters.min_rating}–${filters.max_rating}`,
+      remove: () => setFilters((f) => ({ ...f, min_rating: 0, max_rating: 5 })),
+    });
+  if (filters.superhost)
+    activeFilters.push({
+      key: "superhost",
+      label: "Superhost",
+      remove: () => setFilters((f) => ({ ...f, superhost: false })),
+    });
+  filters.amenities.forEach((amenity) =>
+    activeFilters.push({
+      key: `amenity-${amenity}`,
+      label: amenity,
+      remove: () =>
+        setFilters((f) => ({
+          ...f,
+          amenities: f.amenities.filter((a) => a !== amenity),
+        })),
+    }),
+  );
   const savedIds = wishlist.map((h) => h.id);
   const cards = (items: Listing[]) =>
     items.map((h) => (
@@ -496,215 +834,108 @@ export default function Marketplace() {
     ));
   return (
     <>
-      <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); const main = document.getElementById("main-content"); main?.focus(); main?.scrollIntoView(); }}>Skip to main content</a>
-      <header className={`site-header ${headerSearch ? "expanded" : ""} ${headerSearch && compactSearch ? "compact-search" : ""}`}>
-        <div className="topbar">
-          <button
-            className="brand-button"
-            onClick={() => {
-              clear();
-              navigate("explore");
-            }}
-            aria-label="Airbnb home"
-          >
-            <Logo />
-          </button>
-          <nav className="primary-nav" aria-label="Main navigation" inert={headerSearch && compactSearch}>
-            <button
-              className={isExplore ? "active" : ""}
-              onClick={() => {
-                navigate("explore");
-              }}
-            >
-              <span className="nav-illustration house-illustration">
-                <Home size={27} />
-              </span>{" "}
-              Homes
-            </button>
-            <button className={activityKind === "experiences" ? "active" : ""}
-              onClick={() => navigate("experiences")}
-            >
-              <span className="nav-illustration balloon-illustration">
-                <Globe size={27} />
-              </span>{" "}
-              Experiences <span className="new-label">NEW</span>
-            </button>
-            <button className={activityKind === "services" ? "active" : ""}
-              onClick={() => navigate("services")}
-            >
-              <span className="nav-illustration service-illustration">
-                <Sparkles size={26} />
-              </span>{" "}
-              Services <span className="new-label">NEW</span>
-            </button>
-          </nav>
-          <div className="account-actions">
-            <button className="host-link" onClick={host}>
-              {user.role === "host" ? "Hosting dashboard" : "Become a host"}
-            </button>
-            <button
-              className="icon-button language-button"
-              aria-label="Language and currency"
-              onClick={() => setModal("language")}
-            >
-              <Globe size={19} />
-            </button>
-            <div className="account-container">
-              <button
-                className="profile-button"
-                aria-label="Open account menu"
-                aria-expanded={menu}
-                onClick={() => setMenu(!menu)}
-              >
-                <Menu size={18} />
-                <span className="profile-avatar">
-                  <Avatar initials={user.avatar} name={user.name} />
-                </span>
-              </button>
-              {menu && (
-                <>
-                  <button
-                    className="menu-dismiss"
-                    tabIndex={-1}
-                    aria-label="Close account menu"
-                    onClick={() => setMenu(false)}
-                  />
-                  <div className="account-menu">
-                    <div className="menu-profile">
-                      <Avatar initials={user.avatar} name={user.name} />
-                      <div>
-                        <strong>{user.name}</strong>
-                        <small>Demo {user.role} profile</small>
-                      </div>
-                    </div>
-                    <button onClick={() => navigate("trips")}>
-                      <BriefcaseBusiness size={18} /> Trips
-                    </button>
-                    <button onClick={() => navigate("wishlists")}>
-                      <Heart size={18} /> Wishlists
-                    </button>
-                    <button onClick={host}>
-                      <Home size={18} /> Hosting dashboard
-                    </button>
-                    <button
-                      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                      aria-pressed={theme === "dark"}
-                      onClick={() => {
-                        const next = theme === "dark" ? "light" : "dark";
-                        setTheme(next);
-                        document.documentElement.dataset.theme = next;
-                        try { localStorage.setItem(themeStorageKey, next); } catch { /* Keep the selected theme for this visit. */ }
-                        setMenu(false);
-                      }}
-                    >
-                      {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                      {theme === "dark" ? "Light mode" : "Dark mode"}
-                    </button>
-                    <hr />
-                    <button
-                      onClick={() => {
-                        setMenu(false);
-                        setModal("profiles");
-                      }}
-                    >
-                      <UserRound size={18} /> Switch demo profile
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMenu(false);
-                        setModal("help");
-                      }}
-                    >
-                      Help centre <ArrowUpRight size={16} />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        {activityBrowse && <div className="search-wrap activity-header-search"><form className="search-bar" onSubmit={e=>{e.preventDefault();setActivitySearch({q:activityQ.trim(),day:activityDay,people:activityPeople,category:activityKind==="services"?activityCategory:undefined});}}>
-          <label className="search-destination"><strong>Where</strong><input aria-label="Activity destination" list="activity-destinations" placeholder={compactSearch?"Anywhere":"Search destinations"} value={activityQ} onChange={e=>setActivityQ(e.target.value)}/></label><datalist id="activity-destinations">{["Goa","Jaipur","Bali","Manali","Rome","Mumbai","Barcelona","Delhi","London","Udaipur"].map(v=><option key={v}>{v}</option>)}</datalist>
-          <span className="search-divider"/><label className="search-segment"><strong>Date</strong><input aria-label="Activity date" type="date" min={today()} value={activityDay} onChange={e=>setActivityDay(e.target.value)}/></label>
-          <span className="search-divider"/>{activityKind==="services"?<label className="search-segment"><strong>Service</strong><select aria-label="Service type" value={activityCategory} onChange={e=>setActivityCategory(e.target.value)}><option value="">Any service</option>{activityCategories.services.map(c=><option key={c}>{c}</option>)}</select></label>:<label className="search-segment"><strong>Guests</strong><select aria-label="Activity guests" value={activityPeople} onChange={e=>setActivityPeople(Number(e.target.value))}>{Array.from({length:16},(_,i)=><option value={i+1} key={i}>{i+1} {i?"guests":"guest"}</option>)}</select></label>}
-          <button className="search-submit" aria-label={`Search ${activityKind}`}><Search size={21}/></button>
-        </form></div>}
-        {isExplore && (
-          <div className="search-wrap">
-            <form
-              className="search-bar"
-              onSubmit={(e) => {
-                e.preventDefault();
-                searchHomes();
-              }}
-            >
-              <label className="search-destination">
-                <strong>Where</strong>
-                <input
-                  aria-label="Search destinations"
-                  list="home-destinations"
-                  placeholder={compactSearch ? "Anywhere" : "Search destinations"}
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-              </label>
-              <datalist id="home-destinations">{["Goa","Manali","Jaipur","Bali","Kerala","Mumbai","Delhi","Coorg","Udaipur"].map(d=><option key={d}>{d}</option>)}</datalist>
-              <span className="search-divider" />
-              <button
-                type="button"
-                className="search-segment checkin-segment"
-                onClick={() => setModal("dates")}
-              >
-                <strong>Check in</strong>
-                <span className={start ? "has-value" : ""}>
-                  {compactSearch ? (start ? prettyDate(start) + (end ? " – " + prettyDate(end) : "") : "Anytime") : prettyDate(start)}
-                </span>
-              </button>
-              <span className="search-divider checkout-divider" />
-              <button
-                type="button"
-                className="search-segment checkout-segment"
-                tabIndex={compactSearch ? -1 : undefined}
-                aria-hidden={compactSearch}
-                onClick={() => setModal("dates")}
-              >
-                <strong>Check out</strong>
-                <span className={end ? "has-value" : ""}>
-                  {prettyDate(end)}
-                </span>
-              </button>
-              <span className="search-divider" />
-              <button
-                type="button"
-                className="search-segment guests-segment"
-                onClick={() => setModal("guests")}
-              >
-                <strong>Who</strong>
-                <span>{guests > 1 ? `${guests} guests` : "Add guests"}</span>
-              </button>
-              <button className="search-submit" aria-label="Search homes">
-                <Search size={21} />
-              </button>
-            </form>
-            <div className="mobile-search-options">
-              <button onClick={() => setModal("dates")}>
-                <CalendarDays size={14} />
-                {start
-                  ? prettyDate(start) + (end ? " – " + prettyDate(end) : "")
-                  : "Any week"}
-              </button>
-              <span>·</span>
-              <button onClick={() => setModal("guests")}>
-                <UserRound size={14} />
-                {guests > 1 ? `${guests} guests` : "Add guests"}
-              </button>
-            </div>
-          </div>
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.getElementById("main-content");
+          main?.focus();
+          main?.scrollIntoView();
+        }}
+      >
+        Skip to main content
+      </a>
+      <MarketplaceHeader
+        headerSearch={headerSearch}
+        compactSearch={compactSearch}
+        isExplore={isExplore}
+        activityKind={activityKind}
+        user={user}
+        menu={menu}
+        theme={theme}
+        clear={clear}
+        navigate={navigate}
+        host={host}
+        setMenu={setMenu}
+        setModal={setModal}
+        setTheme={setTheme}
+      >
+        {activityBrowse && (
+          <ActivitySearchBar
+            compactSearch={compactSearch}
+            activityKind={activityKind}
+            activityQ={activityQ}
+            activityDay={activityDay}
+            activityPeople={activityPeople}
+            activityCategory={activityCategory}
+            setActivityQ={setActivityQ}
+            setActivityDay={setActivityDay}
+            setActivityPeople={setActivityPeople}
+            setActivityCategory={setActivityCategory}
+            setActivitySearch={setActivitySearch}
+          />
         )}
-      </header>
-      <nav className="marketplace-mobile-sections" aria-label="Marketplace sections"><button aria-pressed={isExplore} onClick={()=>navigate("explore")}>Homes</button><button aria-pressed={activityKind==="experiences"} onClick={()=>navigate("experiences")}>Experiences</button><button aria-pressed={activityKind==="services"} onClick={()=>navigate("services")}>Services</button></nav>
-      {activityBrowse && ready && activityKind && <ActivityBrowse key={`${activityKind}-${JSON.stringify(activitySearch)}`} kind={activityKind} user={user.id} search={{...activitySearch,category:activityKind==="services"?activitySearch.category:undefined}} favorites={activityFavorites.map(a=>a.id)} onSave={toggleActivitySave} navigate={navigate}/>}
-      {activityId && activityKind && ready && <ActivityDetail key={`${activityId}-${user.id}`} id={activityId} kind={activityKind} user={user.id} saved={activityFavorites.some(a=>a.id===activityId)} onSave={toggleActivitySave} navigate={navigate} notify={notify}/>}
+        {isExplore && (
+          <HomeSearchBar
+            compactSearch={compactSearch}
+            q={q}
+            setQ={setQ}
+            start={start}
+            end={end}
+            guests={guests}
+            setModal={setModal}
+            searchHomes={searchHomes}
+          />
+        )}
+      </MarketplaceHeader>
+      <nav
+        className="marketplace-mobile-sections"
+        aria-label="Marketplace sections"
+      >
+        <button aria-pressed={isExplore} onClick={() => navigate("explore")}>
+          Homes
+        </button>
+        <button
+          aria-pressed={activityKind === "experiences"}
+          onClick={() => navigate("experiences")}
+        >
+          Experiences
+        </button>
+        <button
+          aria-pressed={activityKind === "services"}
+          onClick={() => navigate("services")}
+        >
+          Services
+        </button>
+      </nav>
+      {activityBrowse && ready && activityKind && (
+        <ActivityBrowse
+          key={`${activityKind}-${JSON.stringify(activitySearch)}`}
+          kind={activityKind}
+          user={user.id}
+          search={{
+            ...activitySearch,
+            category:
+              activityKind === "services" ? activitySearch.category : undefined,
+          }}
+          favorites={activityFavorites.map((a) => a.id)}
+          onSave={toggleActivitySave}
+          navigate={navigate}
+        />
+      )}
+      {activityId && activityKind && ready && (
+        <ActivityDetail
+          key={`${activityId}-${user.id}`}
+          id={activityId}
+          kind={activityKind}
+          user={user.id}
+          saved={activityFavorites.some((a) => a.id === activityId)}
+          onSave={toggleActivitySave}
+          navigate={navigate}
+          notify={notify}
+        />
+      )}
       {isExplore && (
         <>
           <div className="category-bar">
@@ -738,24 +969,65 @@ export default function Marketplace() {
             </button>
           </div>
           <main id="main-content" tabIndex={-1} className="explore-shell">
-            {!search.q && !category && !filterCount && !search.start && page === 1 && (
-              <section className="destination-discovery" aria-label="Explore destinations">
-                <div className="discovery-title"><h2>Where will your next story begin?</h2><span>Coast, mountains, or somewhere in between</span></div>
-                <div className="destination-cards">
-                  {[
-                    ["Goa", "Salt air & slow mornings", "photo-1499793983690-e29da59ef1c2"],
-                    ["Himachal", "A little closer to the clouds", "photo-1449158743715-0a90ebb6d2d8"],
-                    ["Kerala", "Green views, everywhere", "photo-1470770841072-f978cf4d019e"],
-                    ["Bali", "Your island state of mind", "photo-1613977257363-707ba9348227"],
-                  ].map(([destination, caption, photo]) => (
-                    <button key={destination} className="destination-card" onClick={() => { setQ(destination); setSearch({ ...search, q: destination }); setPage(1); }}>
-                      <SafeImage src={`https://images.unsplash.com/${photo}?auto=format&fit=crop&w=600&q=80`} alt="" />
-                      <span><strong>{destination}</strong><small>{caption}</small></span><ArrowUpRight size={22} />
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
+            {!search.q &&
+              !category &&
+              !filterCount &&
+              !search.start &&
+              page === 1 && (
+                <section
+                  className="destination-discovery"
+                  aria-label="Explore destinations"
+                >
+                  <div className="discovery-title">
+                    <h2>Where will your next story begin?</h2>
+                    <span>Coast, mountains, or somewhere in between</span>
+                  </div>
+                  <div className="destination-cards">
+                    {[
+                      [
+                        "Goa",
+                        "Salt air & slow mornings",
+                        "photo-1499793983690-e29da59ef1c2",
+                      ],
+                      [
+                        "Himachal",
+                        "A little closer to the clouds",
+                        "photo-1449158743715-0a90ebb6d2d8",
+                      ],
+                      [
+                        "Kerala",
+                        "Green views, everywhere",
+                        "photo-1470770841072-f978cf4d019e",
+                      ],
+                      [
+                        "Bali",
+                        "Your island state of mind",
+                        "photo-1613977257363-707ba9348227",
+                      ],
+                    ].map(([destination, caption, photo]) => (
+                      <button
+                        key={destination}
+                        className="destination-card"
+                        onClick={() => {
+                          setQ(destination);
+                          setSearch({ ...search, q: destination });
+                          setPage(1);
+                        }}
+                      >
+                        <SafeImage
+                          src={`https://images.unsplash.com/${photo}?auto=format&fit=crop&w=600&q=80`}
+                          alt=""
+                        />
+                        <span>
+                          <strong>{destination}</strong>
+                          <small>{caption}</small>
+                        </span>
+                        <ArrowUpRight size={22} />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
             <div className="explore-heading">
               <div>
                 <div className="eyebrow">A LITTLE CHANGE OF SCENERY</div>
@@ -782,8 +1054,15 @@ export default function Marketplace() {
                     ? `${prettyDate(search.start)} – ${prettyDate(search.end)}`
                     : "A new favourite is waiting"}
                 </span>
-                <label className="sort-control">Sort by
-                  <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}>
+                <label className="sort-control">
+                  Sort by
+                  <select
+                    value={sort}
+                    onChange={(event) => {
+                      setSort(event.target.value);
+                      setPage(1);
+                    }}
+                  >
                     <option value="recommended">Recommended</option>
                     <option value="price_low">Price: low to high</option>
                     <option value="price_high">Price: high to low</option>
@@ -793,13 +1072,29 @@ export default function Marketplace() {
               </div>
             </div>
             {activeFilters.length > 0 ? (
-              <div className="active-filters" role="group" aria-label="Active filters">
+              <div
+                className="active-filters"
+                role="group"
+                aria-label="Active filters"
+              >
                 {activeFilters.map((filter) => (
-                  <button key={filter.key} className="filter-chip" aria-label={`Remove ${filter.label} filter`} onClick={() => { filter.remove(); setPage(1); }}>
+                  <button
+                    key={filter.key}
+                    className="filter-chip"
+                    aria-label={`Remove ${filter.label} filter`}
+                    onClick={() => {
+                      filter.remove();
+                      setPage(1);
+                    }}
+                  >
                     {filter.label} <X size={14} aria-hidden="true" />
                   </button>
                 ))}
-                {activeFilters.length > 1 && <button className="clear-filters" onClick={clear}>Clear all filters</button>}
+                {activeFilters.length > 1 && (
+                  <button className="clear-filters" onClick={clear}>
+                    Clear all filters
+                  </button>
+                )}
               </div>
             ) : null}
             {loading ? (
@@ -835,20 +1130,27 @@ export default function Marketplace() {
                       >
                         <ArrowLeft size={17} />
                       </button>
-                      {Array.from({ length: pages }, (_, i) => i).filter((i) => i === 0 || i === pages - 1 || Math.abs(i + 1 - page) <= 1).map((i) => (
-                        <button
-                          key={i}
-                          className={`circle-button ${page === i + 1 ? "active" : ""}`}
-                          aria-label={`Page ${i + 1}`}
-                          aria-current={page === i + 1 ? "page" : undefined}
-                          onClick={() => {
-                            setPage(i + 1);
-                            window.scrollTo({ top: 220, behavior: "smooth" });
-                          }}
-                        >
-                          {i + 1}
-                        </button>
-                      ))}
+                      {Array.from({ length: pages }, (_, i) => i)
+                        .filter(
+                          (i) =>
+                            i === 0 ||
+                            i === pages - 1 ||
+                            Math.abs(i + 1 - page) <= 1,
+                        )
+                        .map((i) => (
+                          <button
+                            key={i}
+                            className={`circle-button ${page === i + 1 ? "active" : ""}`}
+                            aria-label={`Page ${i + 1}`}
+                            aria-current={page === i + 1 ? "page" : undefined}
+                            onClick={() => {
+                              setPage(i + 1);
+                              window.scrollTo({ top: 220, behavior: "smooth" });
+                            }}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
                       <button
                         className="circle-button"
                         disabled={page >= pages}
@@ -880,12 +1182,30 @@ export default function Marketplace() {
               />
             )}
             <section className="hosting-invitation">
-              <div><p className="eyebrow">A SPACE WORTH SHARING</p><h2>Your place could be someone’s favourite getaway.</h2><p>Create a listing, welcome guests, and manage your reservations in one place.</p><button className="dark-button" onClick={host}>Explore hosting <ArrowUpRight size={17} /></button></div>
-              <SafeImage src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=80" alt="A welcoming living room with comfortable seating" />
+              <div>
+                <p className="eyebrow">A SPACE WORTH SHARING</p>
+                <h2>Your place could be someone’s favourite getaway.</h2>
+                <p>
+                  Create a listing, welcome guests, and manage your reservations
+                  in one place.
+                </p>
+                <button className="dark-button" onClick={host}>
+                  Explore hosting <ArrowUpRight size={17} />
+                </button>
+              </div>
+              <SafeImage
+                src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=80"
+                alt="A welcoming living room with comfortable seating"
+              />
             </section>
           </main>
           {!loading && homes.length > 0 && (
-            <button className="map-toggle" onClick={() => setMapView(!mapView)}>
+            <button
+              className={`map-toggle${footerVisible ? " map-toggle-hidden" : ""}`}
+              tabIndex={footerVisible ? -1 : undefined}
+              aria-hidden={footerVisible || undefined}
+              onClick={() => setMapView(!mapView)}
+            >
               {mapView ? "Show homes" : "Show map"}
               <Map size={17} />
             </button>
@@ -922,7 +1242,22 @@ export default function Marketplace() {
             Places you love. Trips you haven’t taken yet.
           </p>
           <h2>Homes</h2>
-          {wishlistLoading ? <Loading /> : wishlistError ? <Empty title="Your wishlist couldn’t load" text={wishlistError} action={<button className="dark-button" onClick={() => setRefresh((n) => n + 1)}>Try again</button>} /> : wishlist.length ? (
+          {wishlistLoading ? (
+            <Loading />
+          ) : wishlistError ? (
+            <Empty
+              title="Your wishlist couldn’t load"
+              text={wishlistError}
+              action={
+                <button
+                  className="dark-button"
+                  onClick={() => setRefresh((n) => n + 1)}
+                >
+                  Try again
+                </button>
+              }
+            />
+          ) : wishlist.length ? (
             <div className="listing-grid">{cards(wishlist)}</div>
           ) : (
             <Empty
@@ -939,97 +1274,78 @@ export default function Marketplace() {
             />
           )}
           <h2 className="activity-section-title">Experiences & services</h2>
-          {!activitySavedReady ? <p>Loading saved offerings…</p> : activityFavorites.length ? <div className="activity-grid">{activityFavorites.map(a=><ActivityCard key={a.id} item={a} saved onSave={toggleActivitySave} navigate={navigate}/>)}</div> : <p className="muted">Save an experience or service to find it here.</p>}
-        </main>
-      )}
-      {route === "trips" && (
-        <main id="main-content" tabIndex={-1} className="workspace-shell">
-          <p className="eyebrow">SOMETHING TO LOOK FORWARD TO</p>
-          <h1>Your trips</h1>
-          <p className="muted page-subtitle">
-            New places. New memories. All in one place.
-          </p>
-          <div className="activity-tabs">{(["Upcoming","Past","Cancelled"] as TripTab[]).map(t=><button key={t} aria-pressed={tripTab===t} onClick={()=>setTripTab(t)}>{t}</button>)}</div><h2>Homes</h2>
-          {tripsLoading ? <Loading /> : tripsError ? <Empty title="Your trips couldn’t load" text={tripsError} action={<button className="dark-button" onClick={() => setRefresh((n) => n + 1)}>Try again</button>} /> : trips.length ? (
-            <div className="trips-grid">
-              {trips.filter(b=>tripTab==="Cancelled"?b.status==="cancelled":b.status==="confirmed"&&(tripTab==="Past"?b.check_out<=today():b.check_out>today())).map((b) => (
-                <article className="trip-card" key={b.id}>
-                  <button onClick={() => navigate("listing/" + b.listing.id)}>
-                    <SafeImage src={b.listing.photos[0]} alt={b.listing.title} />
-                  </button>
-                  <div className="trip-copy">
-                    <span className={`status ${b.status}`}>{b.status}</span>
-                    <h2>{b.listing.location.split(",")[0]}</h2>
-                    <p>{b.listing.title}</p>
-                    <hr />
-                    <div className="trip-details">
-                      <CalendarDays size={18} />
-                      <span>
-                        {prettyDate(b.check_in)} – {prettyDate(b.check_out)},{" "}
-                        {b.check_in.slice(0, 4)}
-                      </span>
-                    </div>
-                    <div className="trip-details">
-                      <UserRound size={18} />
-                      <span>
-                        {b.guests} guests · {money(b.total)} total
-                      </span>
-                    </div>
-                    <div className="trip-actions">
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("listing/" + b.listing.id)}
-                      >
-                        View home <ArrowUpRight size={16} />
-                      </button>
-                      {b.status === "confirmed" && b.check_in >= today() && (
-                        <button
-                          className="text-button muted"
-                          onClick={() => setCancel(b)}
-                        >
-                          Cancel trip
-                        </button>
-                      )}
-                      {b.status === "confirmed" && b.check_out <= today() && (
-                        b.reviewed ? (
-                          <span className="review-submitted" role="status">Review shared</span>
-                        ) : (
-                          <button className="text-button" onClick={() => {
-                            setReviewing(b);
-                            setReviewRating(5);
-                            setReviewComment("");
-                          }}>
-                            Leave a review
-                          </button>
-                        )
-                      )}
-                    </div>
-                    <small className="muted">
-                      Confirmation #AB{String(b.id).padStart(6, "0")}
-                    </small>
-                  </div>
-                </article>
+          {!activitySavedReady ? (
+            <p>Loading saved offerings…</p>
+          ) : activityFavorites.length ? (
+            <div className="activity-grid">
+              {activityFavorites.map((a) => (
+                <ActivityCard
+                  key={a.id}
+                  item={a}
+                  saved
+                  onSave={toggleActivitySave}
+                  navigate={navigate}
+                />
               ))}
             </div>
           ) : (
+            <p className="muted">
+              Save an experience or service to find it here.
+            </p>
+          )}
+        </main>
+      )}
+      {route === "trips" && (
+        <TripsPage
+          user={user}
+          trips={trips}
+          tripsLoading={tripsLoading}
+          tripsError={tripsError}
+          tripTab={tripTab}
+          setTripTab={setTripTab}
+          setRefresh={setRefresh}
+          navigate={navigate}
+          notify={notify}
+          setCancel={setCancel}
+          setReviewing={setReviewing}
+          setReviewRating={setReviewRating}
+          setReviewComment={setReviewComment}
+        />
+      )}
+      {route.startsWith("host") && (
+        <nav className="provider-nav" aria-label="Hosting sections">
+          <button onClick={() => navigate("host")}>Homes & overview</button>
+          <button onClick={() => navigate("host-experiences")}>
+            Experiences
+          </button>
+          <button onClick={() => navigate("host-services")}>Services</button>
+        </nav>
+      )}
+      {(route === "host-experiences" || route === "host-services") &&
+        (user.role === "host" ? (
+          <ActivityHost
+            key={`${route}-${user.id}`}
+            kind={route === "host-experiences" ? "experiences" : "services"}
+            user={user}
+            navigate={navigate}
+            notify={notify}
+          />
+        ) : (
+          <main className="workspace-shell">
             <Empty
-              title="Time to dust off your bags"
-              text="Your next adventure is waiting. Find a home you’ll love."
+              title="Choose a host profile"
+              text="Providers manage their offerings with a demo host profile."
               action={
                 <button
                   className="primary-button"
-                  onClick={() => navigate("explore")}
+                  onClick={() => setModal("host-profile")}
                 >
-                  Start searching
+                  Choose host profile
                 </button>
               }
             />
-          )}
-          <ActivityTrips key={user.id} user={user.id} tab={tripTab} navigate={navigate} notify={notify}/>
-        </main>
-      )}
-      {route.startsWith("host") && <nav className="provider-nav" aria-label="Hosting sections"><button onClick={()=>navigate("host")}>Homes & overview</button><button onClick={()=>navigate("host-experiences")}>Experiences</button><button onClick={()=>navigate("host-services")}>Services</button></nav>}
-      {(route === "host-experiences" || route === "host-services") && (user.role === "host" ? <ActivityHost key={`${route}-${user.id}`} kind={route==="host-experiences"?"experiences":"services"} user={user} navigate={navigate} notify={notify}/> : <main className="workspace-shell"><Empty title="Choose a host profile" text="Providers manage their offerings with a demo host profile." action={<button className="primary-button" onClick={()=>setModal("host-profile")}>Choose host profile</button>}/></main>)}
+          </main>
+        ))}
       {route === "host" &&
         (user.role === "host" ? (
           <Host
@@ -1056,19 +1372,49 @@ export default function Marketplace() {
           </main>
         ))}
       {!ready && listingId !== null && <Loading />}
-      {listingId === null && !activityKind && !["explore", "trips", "wishlists", "host", "host-experiences", "host-services"].includes(route) && (
-        <main id="main-content" tabIndex={-1} className="workspace-shell"><Empty title="We couldn’t find that page" text="This link may be incomplete or out of date." action={<button className="dark-button" onClick={() => navigate("explore")}>Back to exploring</button>} /></main>
-      )}
+      {listingId === null &&
+        !activityKind &&
+        ![
+          "explore",
+          "trips",
+          "wishlists",
+          "host",
+          "host-experiences",
+          "host-services",
+        ].includes(route) && (
+          <main id="main-content" tabIndex={-1} className="workspace-shell">
+            <Empty
+              title="We couldn’t find that page"
+              text="This link may be incomplete or out of date."
+              action={
+                <button
+                  className="dark-button"
+                  onClick={() => navigate("explore")}
+                >
+                  Back to exploring
+                </button>
+              }
+            />
+          </main>
+        )}
       <footer>
         <div className="footer-main">
-          <Inspiration onChoose={(destination) => {
-            setQ(destination); setStart(""); setEnd(""); setGuests(1);
-            setSearch({ q: destination, start: "", end: "", guests: 1 });
-            setCategory(""); setFilters(defaultFilters); setPage(1); navigate("explore");
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }} />
+          <Inspiration
+            onChoose={(destination) => {
+              setQ(destination);
+              setStart("");
+              setEnd("");
+              setGuests(1);
+              setSearch({ q: destination, start: "", end: "", guests: 1 });
+              setCategory("");
+              setFilters(defaultFilters);
+              setPage(1);
+              navigate("explore");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
         </div>
-        <div className="footer-bottom">
+        <div className="footer-bottom" ref={footerBottom}>
           <span>© 2026 Airbnb clone · An independent assignment project</span>
           <div>
             <button onClick={() => setModal("about")}>About this demo</button>
@@ -1147,123 +1493,14 @@ export default function Marketplace() {
         </Modal>
       )}
       {modal === "filters" && (
-        <Modal title="Filters" onClose={() => setModal("")}>
-          <div className="modal-body filter-modal">
-            <section>
-              <h2>Price range</h2>
-              <p className="muted">Nightly prices before fees</p>
-              <div className="price-histogram">
-                {[
-                  18, 28, 40, 35, 58, 72, 88, 100, 93, 84, 92, 78, 67, 71, 53,
-                  42, 38, 26, 21, 18, 12, 8,
-                ].map((v, i) => (
-                  <div key={i} style={{ height: v + "%" }} />
-                ))}
-              </div>
-              <div className="form-grid">
-                <label>
-                  Minimum
-                  <input
-                    aria-label="Minimum price"
-                    type="number"
-                    min={0}
-                    max={1000000}
-                    step={1}
-                    value={draftFilters.min}
-                    onChange={(e) =>
-                      setDraftFilters((f) => ({ ...f, min: +e.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  Maximum
-                  <input
-                    aria-label="Maximum price"
-                    type="number"
-                    min={draftFilters.min}
-                    max={1000000}
-                    step={1}
-                    value={draftFilters.max}
-                    onChange={(e) =>
-                      setDraftFilters((f) => ({ ...f, max: +e.target.value }))
-                    }
-                  />
-                </label>
-              </div>
-            </section>
-            <section>
-              <h2>Type of place</h2>
-              <div className="type-options">
-                {[
-                  "",
-                  "Villa",
-                  "Cabin",
-                  "Cottage",
-                  "Apartment",
-                  "Tiny home",
-                ].map((t) => (
-                  <button
-                    key={t}
-                    className={draftFilters.type === t ? "selected" : ""}
-                    onClick={() => setDraftFilters((f) => ({ ...f, type: t }))}
-                  >
-                    {t || "Any type"}
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section><h2>Rooms and guest ratings</h2><div className="activity-form-grid">
-              {(["bedrooms","beds","bathrooms"] as const).map(key=><label key={key}>Minimum {key}<select value={draftFilters[key]} onChange={e=>setDraftFilters(f=>({...f,[key]:Number(e.target.value)}))}>{[0,1,2,3,4,5].map(n=><option key={n} value={n}>{n?`${n}+`:"Any"}</option>)}</select></label>)}
-              <label>Minimum rating<select value={draftFilters.min_rating} onChange={e=>setDraftFilters(f=>({...f,min_rating:Number(e.target.value)}))}>{[0,3,4,4.5,4.9].map(n=><option key={n} value={n}>{n||"Any"}</option>)}</select></label>
-              <label>Maximum rating<select value={draftFilters.max_rating} onChange={e=>setDraftFilters(f=>({...f,max_rating:Number(e.target.value)}))}>{[3,4,4.5,4.9,5].map(n=><option key={n}>{n}</option>)}</select></label>
-              <label><input type="checkbox" checked={draftFilters.superhost} onChange={e=>setDraftFilters(f=>({...f,superhost:e.target.checked}))}/>Superhost homes</label>
-            </div></section>
-            <section>
-              <h2>The little essentials</h2>
-              <div className="amenity-options">
-                {amenityNames.map((a) => (
-                  <label key={a}>
-                    <input
-                      type="checkbox"
-                      checked={draftFilters.amenities.includes(a)}
-                      onChange={() =>
-                        setDraftFilters((f) => ({
-                          ...f,
-                          amenities: f.amenities.includes(a)
-                            ? f.amenities.filter((x) => x !== a)
-                            : [...f.amenities, a],
-                        }))
-                      }
-                    />
-                    {a}
-                  </label>
-                ))}
-              </div>
-            </section>
-            <div className="form-actions">
-              <button
-                className="text-button"
-                onClick={() => setDraftFilters(defaultFilters)}
-              >
-                Clear all
-              </button>
-              <button
-                className="dark-button"
-                onClick={() => {
-                  if (!Number.isInteger(draftFilters.min) || !Number.isInteger(draftFilters.max) || draftFilters.min < 0 || draftFilters.max > 1000000 || draftFilters.min > draftFilters.max || draftFilters.min_rating > draftFilters.max_rating) {
-                    notify("Enter whole-rupee prices from ₹0 to ₹10,00,000, with maximum at least minimum.");
-                    return;
-                  }
-                  setFilters(draftFilters);
-                  setPage(1);
-                  setModal("");
-                }}
-              >
-                Show homes
-              </button>
-            </div>
-          </div>
-        </Modal>
+        <FilterModal
+          draftFilters={draftFilters}
+          setDraftFilters={setDraftFilters}
+          setFilters={setFilters}
+          setPage={setPage}
+          setModal={setModal}
+          notify={notify}
+        />
       )}
       {(modal === "profiles" || modal === "host-profile") && (
         <Modal
@@ -1276,8 +1513,9 @@ export default function Marketplace() {
         >
           <div className="modal-body">
             <p className="muted">
-              One marketplace, two ways to use it. Guests book and save stays; hosts
-              manage their homes and reservations. Choose a demo profile below—no password needed.
+              One marketplace, two ways to use it. Guests book and save stays;
+              hosts manage their homes and reservations. Choose a demo profile
+              below—no password needed.
             </p>
             <div className="profile-options">
               {users
@@ -1312,9 +1550,7 @@ export default function Marketplace() {
           </div>
         </Modal>
       )}
-      {["language", "help", "about"].includes(
-        modal,
-      ) && (
+      {["language", "help", "about"].includes(modal) && (
         <Modal
           title={
             modal === "language"
@@ -1373,30 +1609,70 @@ export default function Marketplace() {
         </Modal>
       )}
       {reviewing && (
-        <Modal title="Share your stay" onClose={() => { if (!reviewBusy) setReviewing(null); }}>
+        <Modal
+          title="Share your stay"
+          onClose={() => {
+            if (!reviewBusy) setReviewing(null);
+          }}
+        >
           <form className="modal-body review-form" onSubmit={submitReview}>
             <h2>{reviewing.listing.title}</h2>
-            <p className="muted">Your review helps future guests know what to expect.</p>
+            <p className="muted">
+              Your review helps future guests know what to expect.
+            </p>
             <label>
               Your rating
-              <select aria-label="Your rating" value={reviewRating} onChange={(event) => setReviewRating(Number(event.target.value))}>
-                {[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} star{value === 1 ? "" : "s"}</option>)}
+              <select
+                aria-label="Your rating"
+                value={reviewRating}
+                onChange={(event) =>
+                  setReviewRating(Number(event.target.value))
+                }
+              >
+                {[5, 4, 3, 2, 1].map((value) => (
+                  <option key={value} value={value}>
+                    {value} star{value === 1 ? "" : "s"}
+                  </option>
+                ))}
               </select>
             </label>
             <label>
               Your review
-              <textarea aria-label="Your review" required minLength={10} maxLength={1000} rows={5} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="What made your stay memorable?" />
+              <textarea
+                aria-label="Your review"
+                required
+                minLength={10}
+                maxLength={1000}
+                rows={5}
+                value={reviewComment}
+                onChange={(event) => setReviewComment(event.target.value)}
+                placeholder="What made your stay memorable?"
+              />
               <small className="muted">10–1,000 characters</small>
             </label>
             <div className="form-actions">
-              <button type="button" className="text-button" disabled={reviewBusy} onClick={() => setReviewing(null)}>Cancel</button>
-              <button className="primary-button" disabled={reviewBusy}>{reviewBusy ? "Sharing…" : "Submit review"}</button>
+              <button
+                type="button"
+                className="text-button"
+                disabled={reviewBusy}
+                onClick={() => setReviewing(null)}
+              >
+                Cancel
+              </button>
+              <button className="primary-button" disabled={reviewBusy}>
+                {reviewBusy ? "Sharing…" : "Submit review"}
+              </button>
             </div>
           </form>
         </Modal>
       )}
       {cancel && (
-        <Modal title="Cancel your trip?" onClose={() => { if (!busy) setCancel(null); }}>
+        <Modal
+          title="Cancel your trip?"
+          onClose={() => {
+            if (!busy) setCancel(null);
+          }}
+        >
           <div className="modal-body">
             <h2>{cancel.listing.title}</h2>
             <p>
@@ -1407,7 +1683,11 @@ export default function Marketplace() {
               available to other guests. No real payment was taken.
             </p>
             <div className="form-actions">
-              <button className="text-button" disabled={busy} onClick={() => setCancel(null)}>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => setCancel(null)}
+              >
                 Keep my trip
               </button>
               <button
@@ -1428,7 +1708,30 @@ export default function Marketplace() {
           className="map-modal"
           onClose={() => setMapView(false)}
         >
-          {mapLoading ? <Loading /> : mapError ? <Empty title="The map couldn’t load" text={mapError} action={<button className="dark-button" onClick={() => setRefresh((n) => n + 1)}>Try again</button>} /> : <StayMap homes={mapHomes} onOpen={(id) => { setMapView(false); navigate("listing/" + id); }} />}
+          {mapLoading ? (
+            <Loading />
+          ) : mapError ? (
+            <Empty
+              title="The map couldn’t load"
+              text={mapError}
+              action={
+                <button
+                  className="dark-button"
+                  onClick={() => setRefresh((n) => n + 1)}
+                >
+                  Try again
+                </button>
+              }
+            />
+          ) : (
+            <StayMap
+              homes={mapHomes}
+              onOpen={(id) => {
+                setMapView(false);
+                navigate("listing/" + id);
+              }}
+            />
+          )}
         </Modal>
       )}
       {toast && (

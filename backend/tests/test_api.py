@@ -16,7 +16,7 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def stay(listing=4, offset=60, nights=3):
+def stay(listing=21, offset=60, nights=3):
     start = booking_today() + timedelta(days=offset)
     return {
         "listing_id": listing,
@@ -47,7 +47,7 @@ def listing_payload():
 
 def test_search_filters_pagination_and_seed(client):
     first = client.get("/api/listings").json()
-    assert first["total"] == 272 and len(first["items"]) == 15
+    assert first["total"] == 49 and len(first["items"]) == 15
     second = client.get("/api/listings?page=2").json()
     assert len(second["items"]) == 15
     assert not ({x["id"] for x in first["items"]} & {x["id"] for x in second["items"]})
@@ -64,7 +64,7 @@ def test_search_filters_pagination_and_seed(client):
 def test_booking_quote_persistence_and_cancellation(client):
     body = stay()
     quote = client.post("/api/quote", json=body).json()
-    assert quote["total"] == 5400 * 3 + 900 + 2268
+    assert quote["total"] == quote["nightly_price"] * 3 + quote["cleaning_fee"] + quote["service_fee"]
     booking = client.post("/api/bookings", json=body)
     assert booking.status_code == 201
     bid = booking.json()["id"]
@@ -160,12 +160,12 @@ def test_host_ownership_crud_and_soft_delete(client):
 
 
 def test_wishlist_is_per_user_and_idempotent(client):
-    client.put("/api/wishlists/3")
-    client.put("/api/wishlists/3")
-    assert len([h for h in client.get("/api/wishlists").json() if h["id"] == 3]) == 1
+    client.put("/api/wishlists/21")
+    client.put("/api/wishlists/21")
+    assert len([h for h in client.get("/api/wishlists").json() if h["id"] == 21]) == 1
     assert client.get("/api/wishlists", headers={"X-Demo-User": "2"}).json() == []
-    client.delete("/api/wishlists/3")
-    assert 3 not in [h["id"] for h in client.get("/api/wishlists").json()]
+    client.delete("/api/wishlists/21")
+    assert 21 not in [h["id"] for h in client.get("/api/wishlists").json()]
 
 
 def test_bad_listing_rolls_back(client):
@@ -175,4 +175,4 @@ def test_bad_listing_rolls_back(client):
         json={**listing_payload(), "amenities": ["Invented amenity"]},
     )
     assert result.status_code == 422
-    assert client.get("/api/listings").json()["total"] == 272
+    assert client.get("/api/listings").json()["total"] == 49

@@ -16,10 +16,10 @@ import {
   Medal,
 } from "lucide-react";
 import { api, ApiError, Listing, Quote, money, prettyDate, today } from "@/lib/api";
-import { Calendar, Modal, SafeImage, Avatar, amenityIcons } from "./UI";
+import { Calendar, Modal, SafeImage, Avatar, amenityIcons } from "@/components/UI";
 import dynamic from "next/dynamic";
 
-const StayMap = dynamic(() => import("./StayMap"), { ssr: false, loading: () => <div className="map-unavailable">Loading map…</div> });
+const StayMap = dynamic(() => import("@/components/maps/StayMap"), { ssr: false, loading: () => <div className="map-unavailable">Loading map…</div> });
 
 export default function Detail({
   id,

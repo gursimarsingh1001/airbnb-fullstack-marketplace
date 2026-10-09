@@ -111,3 +111,71 @@ Map country selection now has a visible label and per-country counts. Nearby hom
 Header-only refinement in Marketplace.tsx and globals.css: one shared form morphs over 300ms with cubic-bezier(0.2,0,0,1), passive/rAF scroll handling and 70px/40px hysteresis. Width, height, position, padding, separators and labels transition; navigation fades/translates and becomes inert. Reserved flow space keeps content stationary; reduced-motion preference disables transitions. Phone layout retains its existing expanded controls.
 
 Verified locally: initial scrollY=0; slow scrolling (expanded at45, compact at81, stays compact at54); fast and repeated up/down scrolling; return to top restoring850px search; expanded and compact calendar actions; compact destination submission returning Goa stays; desktop1440, tablet768, mobile390 screenshots inspected. Main content document offset stayed288px before/after morph. No console errors captured. Frontend lint, nine tests, and production build/TypeScript passed. No reference recording was attached, so behavior follows the written specification rather than a frame-by-frame comparison.
+
+## Evaluator-style audit (9 October 2026)
+
+This is the current status snapshot against the 25 requested evaluator categories. Earlier sections are historical records from earlier code states; this section reflects commit `d933fd1` plus the focused GET-retry change below. A green status means the behavior was implemented and exercised by the listed evidence, not that the entire application is certified or production-secure.
+
+| # | Area | Status | Evidence and limits |
+|---:|---|:---:|---|
+| 1 | Home/search | ✅ | The latest isolated QA seed returned 49 active homes (48 curated plus the preserved review-demo home). The browser showed photo/title/location/price/rating cards, segmented destination/date/guest search, category rail and pagination. |
+| 2 | Filters | ✅ | Category and combined category/location search were exercised in the browser; clearing filters restored the catalogue. Source and backend regressions cover price, type, amenities, guest/date, and pagination combinations. |
+| 3 | Listing detail | ✅ | Direct local detail route displayed the gallery, description, location, host, amenities, rating/reviews, calendar and quote controls. The deployed `#listing/1` page also loaded its gallery, review panel, host details, availability and map in a read-only smoke check. |
+| 4 | Availability | ✅ | Local calendar marked past and booked nights unavailable; selected check-in/check-out and guest count survived refresh. Backend tests cover overlap boundaries and availability filtering. |
+| 5 | Booking validation | ✅ | 83 backend tests pass, including invalid/past dates, capacity, missing or removed homes, overlap shapes, back-to-back stays, concurrent attempts, ownership, quote changes and idempotency. |
+| 6 | Mock checkout | ✅ | Completed a local two-night home reservation for ₹13,212 (₹5,400 × 2 + ₹900 cleaning + ₹1,512 service); the confirmed summary matched. UI states that checkout is a demo and collects no payment credentials. |
+| 7 | My Trips | ✅ | The home booking plus experience and service confirmations appeared under the guest profile, survived a browser refresh, and stayed scoped from the host profile. One transient first-read connection failure was observed during a profile change; retry loaded the records. The API client now safely retries one failed GET once; a frontend API regression test verifies this behavior without replaying writes. Profile switching was rechecked after the fix. |
+| 8 | Database persistence | ✅ | The test browser used isolated `.devtools/evaluator-20261009.sqlite`; seeded rows, bookings, favorite and soft-deleted test listing were retained. Existing backend regressions verify persistence across app initialization/restart. The public database was not modified. |
+| 9 | Host CRUD | ✅ | In the isolated local database, created a listing through the host form, edited its price and details, then soft-deleted it through the UI. Host ownership and invalid input cases are covered by direct API tests. |
+| 10 | Host dashboard | ✅ | The host home dashboard showed owned listings and reservations; experience and service provider tabs showed their seeded and test bookings. The temporary home was removed through soft delete and did not orphan reservation history. |
+| 11 | Wishlist | ✅ | A listing was saved as the guest, remained saved after refresh, and was absent after switching to a different profile. API tests enforce per-user scope and prevent duplicate rows. |
+| 12 | Experiences | ✅ | Local browse rendered seeded offers, category/search controls, pagination and details; the booking detail exposed available session times and capacity. |
+| 13 | Experience booking | ✅ | Completed a local experience booking; confirmation `ACT3` and its ₹1,980 server total appeared in Trips and the host’s reservations. |
+| 14 | Services | ✅ | Local service browse, category/filter controls, detail page and host service dashboard were exercised. |
+| 15 | Service booking | ✅ | Completed a local service booking; confirmation `ACT4` and ₹1,980 total appeared in Trips and the host dashboard. An already occupied host time was unavailable. |
+| 16 | Responsive design | ⚠️ | Responsive breakpoints and phone/tablet/desktop layouts are implemented; earlier browser passes inspected 390×844, 768×1024 and 1440×900. I attempted fresh 1440, 768 and 390 viewport overrides, but the browser remained at 1280px each time, so this pass could not re-check those exact widths. |
+| 17 | Airbnb visual similarity | ⚠️ | Local UI has Airbnb-style segmented search, category rail, photo-forward cards, rounded controls, review details and modal patterns. Compared at a high level with the public [Airbnb India house-rental page](https://www.airbnb.co.in/india/stays/houses); it is an original assignment UI, not a pixel-perfect copy, and no side-by-side pixel measurement was performed. |
+| 18 | API architecture | ✅ | FastAPI routers separate home and activity workflows; Pydantic validation, status handling, user scoping, server quotes, idempotency and ownership are exercised by the backend suite. Local UI requests returned successfully on the tested flows. |
+| 19 | Database architecture | ✅ | SQLite schema uses foreign keys on connections, relationships, constraints, indexes, integer INR amounts, historical booking snapshots, overlap enforcement and soft deletion. Regression tests exercise foreign-key and trigger enforcement. |
+| 20 | README | ✅ | Reviewed `README.md` setup, environment, seed/init, schema/ER diagram, API examples, booking rules, tests, deployment/persistence and demo identity explanation against the package scripts and backend layout. |
+| 21 | Error handling | ✅ | UI has loading, empty, retry and validation states; malformed images have a fallback. `api()` maps network, HTTP and malformed-response errors. Added a single delayed retry for failed GETs only; writes are never replayed. |
+| 22 | Loading states | ✅ | Listing, host and activity components expose loading states before rendering data, with empty/error states after completion. Tested Trips transition and retry in the browser. |
+| 23 | TypeScript errors | ✅ | `npm run typecheck` and production Next build both passed after the change; 10 frontend tests also passed. |
+| 24 | Console errors | ✅ | Browser DevTools log query returned no warnings/errors on the local paths inspected after the fix; this was a targeted sample, not every route or browser. |
+| 25 | Backend errors | ✅ | `python -m pytest backend/tests -q`: 83 passed. Targeted local UI actions completed and server logs showed successful API responses; no 5xx was observed in those actions. This is not a claim that every possible production request is error-free. |
+
+### Findings and focused correction
+
+- No required feature was missing and no persistent broken workflow remained at the end of this pass. The only reproduced user-visible rough edge was a transient failed Trips read on a demo-profile transition. A one-time retry was added for network-failed `GET` requests; POST/PUT/DELETE operations are not retried. The new frontend regression test verifies both retry behavior and the no-write-replay rule.
+- Running the dev server regenerated `frontend/next-env.d.ts` with development-only type paths. The initial Git tree was clean, so those generated-only edits were restored to the committed references.
+- No seed or public data was reset. Host CRUD and bookings were tested against the isolated `.devtools/evaluator-20261009.sqlite` database. The deployed site was only read; no public booking, review, listing edit or upload was made.
+
+### Checks run in this pass
+
+```text
+python -m pytest backend/tests -q    82 passed
+cd frontend && npm test              10 passed
+cd frontend && npm run lint           passed (0 warnings)
+cd frontend && npm run typecheck      passed
+cd frontend && npm run build          passed (Next.js 16.4 static export)
+```
+
+Local browser work exercised home search/filtering, listing detail/calendar, the mock home checkout, guest Trips and favorites, host CRUD/dashboard, experience/service bookings, and post-fix demo-profile switching. The live URL was smoke-tested on the existing listing-detail page only; remote API failure paths and remote write flows were not tested. The local browser console sample was empty. Exact responsive sizes and an exhaustive accessibility/console pass were not repeated in this evaluator run.
+
+### Remaining limits
+
+- Demo profiles and `X-Demo-User` are intentionally public and spoofable; this is not real authentication or production authorization.
+- Images and map pins are illustrative; geolocation is approximate and map tiles/photo hosts depend on third parties.
+- The UI resembles Airbnb’s marketplace patterns but is not pixel-identical. The 390/768/1440 responsive evidence is from the previous recorded browser pass.
+- Cloud Blob upload was implemented and previously verified against the deployed service, but was not re-run here to avoid consuming free shared storage quota.
+- No exhaustive accessibility audit, all-browser viewport matrix, remote booking/API test, or payment integration was performed.
+
+## Curated seed and compact activity-date refresh (9 October 2026)
+
+- Replaced the repeated template-like demo catalogue with 48 curated homes, 24 Experiences and 20 Services. All 92 curated offers now have distinct host identities and primary image URLs; the preserved completed-stay demo home retains its separate host and cover. Gallery photos, amenities, ratings, reviews, and rolling future availability remain in the existing schema.
+- Added `curated-marketplace-v3` as an additive marker. Existing seeded offers have their primary cover and host updated in place; old booking/review rows and user-created content are retained. Fresh and previously migrated databases converge on 49 active homes, 24 Experiences, 20 Services, 93 active host identities, and 93 unique cover images.
+- Compact Experiences/Services search now summarizes a selected date as `12 Oct` (or `Any week`) and opens the native calendar when its compact summary is clicked. The raw date input is reduced to a 1×1 transparent control on desktop compact mode, preventing its browser-formatted value from colliding with neighboring sections; mobile keeps the normal date control.
+- Browser verification on local Services confirmed 20 cards, all 12 currently rendered photos loaded, no broken visible images, no horizontal overflow at the 1280 px viewport, `Any week` in the compact bar, and the compact date button opened the calendar. On Experiences, selecting 12 October displayed `12 Oct`; clicking the compact summary opened the calendar. No console warnings or errors were captured.
+- Isolated migration query verified counts, 93 distinct active host names, 93 distinct primary cover URLs, and seed versions through v3. Restart/idempotence and booking-preservation regression test passed. The focused regression suite now asserts offer titles, primary photos, host identities, and per-section content uniqueness.
+- Latest checks: 83 backend tests, 10 frontend tests, TypeScript, ESLint and the Next production build all passed. The changes are local and have not been published; the public demo remains on its previous deployment until a later authorized publish.
+- Remaining limits for this refresh: third-party Unsplash/RandomUser availability is not guaranteed by the database; full remote production verification and fresh 390/768 viewport tests were not repeated in this focused pass.

@@ -1,66 +1,5 @@
-export type User = {
-  id: number;
-  name: string;
-  role: "guest" | "host";
-  avatar: string;
-  joined_year: number;
-};
-export type Review = {
-  id: number;
-  name: string;
-  avatar: string;
-  rating: number;
-  comment: string;
-  created_at: string;
-};
-export type Listing = {
-  id: number;
-  host_id: number;
-  title: string;
-  description: string;
-  location: string;
-  country: string;
-  latitude: number;
-  longitude: number;
-  category: string;
-  property_type: string;
-  price: number;
-  cleaning_fee: number;
-  max_guests: number;
-  bedrooms: number;
-  beds: number;
-  bathrooms: number;
-  superhost: number;
-  photos: string[];
-  amenities: string[];
-  host: User;
-  rating: number | null;
-  review_count: number;
-  reviews?: Review[];
-  unavailable?: { check_in: string; check_out: string }[];
-};
-export type Booking = {
-  id: number;
-  listing: Listing;
-  check_in: string;
-  check_out: string;
-  guests: number;
-  nightly_price: number;
-  cleaning_fee: number;
-  service_fee: number;
-  total: number;
-  status: string;
-  guest_name: string;
-  reviewed: boolean;
-};
-export type Quote = {
-  nights: number;
-  nightly_price: number;
-  subtotal: number;
-  cleaning_fee: number;
-  service_fee: number;
-  total: number;
-};
+export type { User, Review, Listing, Booking, Quote } from "./types";
+
 export const money = (n: number) => "₹" + n.toLocaleString("en-IN");
 export const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -98,23 +37,45 @@ export async function api<T>(
       ? "http://127.0.0.1:8001"
       : "");
   let response: Response;
-  try {
-    response = await fetch(base + "/api" + path, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Demo-User": String(user),
-        ...options.headers,
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: options.signal,
-      cache: "no-store",
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") throw error;
-    throw new Error(
-      "We couldn’t connect. Please check your connection and try again.",
-    );
+  const readOnly = method.toUpperCase() === "GET";
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(base + "/api" + path, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Demo-User": String(user),
+          ...options.headers,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: options.signal,
+        cache: "no-store",
+      });
+      break;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      // A read is safe to repeat after a brief network interruption. Never
+      // replay writes, since a failed response may still follow a committed
+      // reservation or listing change.
+      if (!readOnly || attempt > 0) {
+        throw new Error(
+          "We couldn’t connect. Please check your connection and try again.",
+        );
+      }
+      await new Promise<void>((resolve, reject) => {
+        const finish = () => {
+          options.signal?.removeEventListener("abort", abort);
+          resolve();
+        };
+        const timer = setTimeout(finish, 150);
+        const abort = () => {
+          clearTimeout(timer);
+          reject(options.signal?.reason ?? new DOMException("Aborted", "AbortError"));
+        };
+        if (options.signal?.aborted) abort();
+        else options.signal?.addEventListener("abort", abort, { once: true });
+      });
+    }
   }
   let data;
   try {

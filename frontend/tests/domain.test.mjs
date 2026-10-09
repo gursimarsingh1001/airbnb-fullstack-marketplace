@@ -62,6 +62,24 @@ test("API reports offline and non-JSON failures without raw parser exceptions", 
   globalThis.fetch = async () => new Response("Bad gateway", { status: 502 });
   await assert.rejects(api("/listings", 1), (error) => error instanceof ApiError && error.status === 502 && /unexpected response/.test(error.message));
 });
+test("API retries one transient read but never replays a write", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) throw new TypeError("Temporary connection reset");
+    return Response.json([{ id: 1 }]);
+  };
+  assert.deepEqual(await api("/bookings", 1), [{ id: 1 }]);
+  assert.equal(calls, 2);
+
+  calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    throw new TypeError("Temporary connection reset");
+  };
+  await assert.rejects(api("/bookings", 1, "POST", { guests: 1 }), /couldn’t connect/);
+  assert.equal(calls, 1);
+});
 test("API preserves cancellation so stale requests can be discarded", async () => {
   globalThis.fetch = async () => { throw new DOMException("Aborted", "AbortError"); };
   await assert.rejects(api("/listings", 1), { name: "AbortError" });
