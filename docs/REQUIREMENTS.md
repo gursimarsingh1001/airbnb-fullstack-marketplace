@@ -16,7 +16,7 @@ Audit date: **9 October 2026**. “Implemented” describes source behavior; the
 | Gallery, photo fallback, description, host, amenities, reviews | Implemented and verified | Gallery opened with six rendered images; bad host photo showed fallback; detail content inspected in browser |
 | Calendar and unavailable dates | Implemented and verified | Browser confirmed blocked nights and free checkout boundary; 3 frontend calendar tests cover boundaries and policy |
 | Quote/checkout/confirmation price consistency | Implemented and verified | Local two-night booking total ₹16,518 matched confirmed API/UI breakdown; quote changes reject stale checkout |
-| Past/invalid dates, listing capacity, missing listing, host self-booking | Implemented and verified | Backend parametrized validation/ownership tests; policy uses UTC date-only “today” |
+| Past/invalid dates, listing capacity, missing listing, host self-booking | Implemented and verified | Backend parametrized validation/ownership tests; policy uses Asia/Kolkata date-only “today” |
 | Overlap shapes, containing/contained stays, back-to-back | Implemented and verified | Five interval-shape API cases reject; both adjacent boundaries pass; SQLite trigger repeats overlap check |
 | Concurrent bookings and duplicate submissions | Implemented and verified | `BEGIN IMMEDIATE`, unique idempotency key, database trigger; concurrent same-key test returns one ID; changed-key payload rejected |
 | Booking scope, guest Trips, host reservations, cancellation | Implemented and verified | Browser confirmation survived refresh; cancellation succeeded; API tests scope guest/host records and preserve history |
@@ -46,4 +46,4 @@ Audit date: **9 October 2026**. “Implemented” describes source behavior; the
 
 Real payments, messaging, identity verification, live pricing pins, and social authentication remain mocked or unimplemented as permitted. The map uses approximate seeded coordinates and OpenStreetMap tiles; cloud photo storage uses the connected Vercel Blob quota.
 
-Current follow-up: 44 homes, all-results map, destination shortcuts, hosting section and server-side sorting. 70 backend and 8 frontend tests passed. See the latest section of `audit.md`.
+Current follow-up: 240 homes, all-results map, persistent local drafts, compact sticky search, demo portraits and responsive refinements. 72 backend and 9 frontend tests passed. See the latest section of `audit.md`.

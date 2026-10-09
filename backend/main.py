@@ -134,7 +134,7 @@ def check_available(db, id, check_in, check_out):
 @app.get("/api/health")
 def health(db: DB):
     db.execute("SELECT 1")
-    return {"status": "ok", "database": "sqlite", "booking_today": str(booking_today()), "date_policy": "UTC"}
+    return {"status": "ok", "database": "sqlite", "booking_today": str(booking_today()), "date_policy": "Asia/Kolkata"}
 
 
 @app.get("/api/users")

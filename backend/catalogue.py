@@ -55,3 +55,40 @@ def expand_catalogue(db):
         db.execute("INSERT INTO reviews(listing_id,user_id,rating,comment) VALUES(?,5,?,?)",
                    (listing_id, 4 if index % 4 == 0 else 5, 'A comfortable, thoughtfully arranged stay. We enjoyed the quiet mornings and helpful local tips.'))
     db.execute("INSERT INTO demo_content_versions VALUES('catalogue-v2')")
+
+
+def expand_large_catalogue(db):
+    """Add 196 varied fictional stays once, for a 240-home initial catalogue."""
+    if db.execute("SELECT 1 FROM demo_content_versions WHERE version='catalogue-v3'").fetchone():
+        return
+    templates = db.execute('SELECT * FROM listings WHERE id<=44 ORDER BY id').fetchall()
+    names = ['Terrace retreat', 'Garden hideaway', 'Sunrise house', 'Courtyard escape',
+             'The reading room', 'Quiet mornings', 'The weekend home', 'Little sanctuary']
+    for i in range(196):
+        source = templates[i % len(templates)]
+        variant = i // len(templates)
+        town = source['location'].split(',')[0]
+        title = f"{names[(i + variant) % len(names)]} in {town} · {variant + 1}"
+        price = max(1800, source['price'] + (i % 9 - 4) * 450)
+        latitude = source['latitude'] + ((i % 7) - 3) * .008
+        longitude = source['longitude'] + ((i % 11) - 5) * .008
+        cursor = db.execute('''INSERT INTO listings(host_id,title,description,location,country,category,
+            property_type,price,cleaning_fee,max_guests,bedrooms,beds,bathrooms,latitude,longitude,superhost)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (source['host_id'], title,
+             f"A fictional {source['property_type'].lower()} in {town}, with space to relax and make yourself at home. "
+             "Enjoy a well-equipped kitchen, fresh linens and a comfortable living area. "
+             "Your host can suggest local walks and places to eat. Photos are illustrative; map positions are approximate.",
+             source['location'], source['country'], source['category'], source['property_type'], price,
+             source['cleaning_fee'], source['max_guests'], source['bedrooms'], source['beds'], source['bathrooms'],
+             latitude, longitude, int(i % 3 != 0)))
+        lid = cursor.lastrowid
+        photos = db.execute('SELECT url FROM photos WHERE listing_id=? ORDER BY position', (source['id'],)).fetchall()
+        # Alternate exterior and interior covers while retaining complete galleries.
+        offset = i % min(3, len(photos)) if photos else 0
+        photos = photos[offset:] + photos[:offset]
+        db.executemany('INSERT INTO photos(listing_id,url,position) VALUES(?,?,?)', [(lid, row['url'], n) for n, row in enumerate(photos)])
+        db.execute('INSERT INTO listing_amenities SELECT ?,amenity_id FROM listing_amenities WHERE listing_id=?', (lid, source['id']))
+        db.execute('INSERT INTO reviews(listing_id,user_id,rating,comment) VALUES(?,5,?,?)',
+                   (lid, 4 if i % 5 == 0 else 5, 'A relaxing stay with comfortable rooms and a helpful host. We enjoyed exploring the area.'))
+    db.execute("INSERT INTO demo_content_versions VALUES('catalogue-v3')")

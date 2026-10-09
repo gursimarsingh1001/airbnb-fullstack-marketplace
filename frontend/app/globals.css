@@ -3067,3 +3067,36 @@ td p {
   border-color: #666;
   background: var(--surface);
 }
+
+/* The large search remains in flow; a compact sticky version follows scrolling. */
+.site-header.expanded { position: sticky; top: 0; z-index: 40; }
+.photo-avatar { overflow: hidden; flex-shrink: 0; }
+.photo-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar .avatar { width: 100%; height: 100%; }
+.site-header.compact-search { box-shadow: 0 2px 12px #0000000d; }
+.compact-search .topbar { height: 76px; }
+.compact-search .primary-nav { display: none; }
+.compact-search .search-wrap { position: absolute; top: 12px; left: 24%; width: 45%; padding: 0; }
+.compact-search .search-bar { height: 50px; background: var(--paper); }
+.compact-search .search-bar strong { display: none; }
+.compact-search .search-destination { min-width: 100px; padding: 10px 16px; }
+.compact-search .search-segment { padding: 10px 12px; min-width: 0; }
+.compact-search .search-segment span { white-space: nowrap; font-size: 12px; }
+.compact-search .search-submit { width: 38px; height: 38px; min-width: 38px; margin-right: 5px; }
+.pagination { flex-wrap: wrap; }
+:root[data-theme="dark"] .booking-fields select { background: var(--paper); color: inherit; }
+@media (min-width: 641px) and (max-width: 1050px) {
+  .compact-search .host-link, .compact-search .language-button { display: none; }
+  .compact-search .search-wrap { left: 17%; width: 64%; }
+  .compact-search .logo > span { display: none; }
+}
+@media (max-width: 640px) {
+  .compact-search .topbar { display: none; }
+  .compact-search .search-wrap { position: static; width: auto; padding: 8px 16px 10px; }
+  .compact-search .search-bar { height: 46px; }
+  .compact-search .mobile-search-options { margin-top: 8px; }
+  .search-destination input, .host-form input, .host-form textarea, .host-form select { font-size: 16px; }
+  .pagination .circle-button { min-width: 38px; width: 38px; height: 38px; }
+  .host-grid, .trips-grid { grid-template-columns: minmax(0,1fr); }
+  .map-modal { max-width: 100%; }
+}

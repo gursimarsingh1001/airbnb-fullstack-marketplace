@@ -10,9 +10,9 @@ BEGIN
    NEW.check_out NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' OR
    date(NEW.check_in, '+0 days') IS NOT NEW.check_in OR
    date(NEW.check_out, '+0 days') IS NOT NEW.check_out OR
-   NEW.check_in < date('now') OR
+   NEW.check_in < date('now', '+330 minutes') OR
    julianday(NEW.check_out) - julianday(NEW.check_in) NOT BETWEEN 1 AND 90 OR
-   NEW.check_out > date('now', '+730 days')
+   NEW.check_out > date('now', '+330 minutes', '+730 days')
  THEN RAISE(ABORT, 'Invalid booking dates') END;
  SELECT CASE WHEN NOT EXISTS (
    SELECT 1 FROM listings l WHERE l.id=NEW.listing_id AND l.deleted=0
@@ -82,7 +82,22 @@ def migrate(db):
               SELECT CASE WHEN NOT EXISTS (
                 SELECT 1 FROM bookings b WHERE b.id=NEW.booking_id
                   AND b.listing_id=NEW.listing_id AND b.user_id=NEW.user_id
-                  AND b.status='confirmed' AND b.check_out<=date('now')
+                  AND b.status='confirmed' AND b.check_out<=date('now', '+330 minutes')
               ) THEN RAISE(ABORT, 'Review requires a completed confirmed stay') END;
             END""")
         db.execute("INSERT INTO schema_migrations(version) VALUES(2)")
+
+    if not db.execute("SELECT 1 FROM schema_migrations WHERE version=3").fetchone():
+        db.execute("DROP TRIGGER IF EXISTS bookings_validate_insert")
+        db.execute(BOOKING_INSERT_GUARD)
+        db.execute("DROP TRIGGER IF EXISTS reviews_completed_stay_guard")
+        db.execute("""CREATE TRIGGER reviews_completed_stay_guard
+            BEFORE INSERT ON reviews WHEN NEW.booking_id IS NOT NULL
+            BEGIN
+              SELECT CASE WHEN NOT EXISTS (
+                SELECT 1 FROM bookings b WHERE b.id=NEW.booking_id
+                  AND b.listing_id=NEW.listing_id AND b.user_id=NEW.user_id
+                  AND b.status='confirmed' AND b.check_out<=date('now', '+330 minutes')
+              ) THEN RAISE(ABORT, 'Review requires a completed confirmed stay') END;
+            END""")
+        db.execute("INSERT INTO schema_migrations(version) VALUES(3)")

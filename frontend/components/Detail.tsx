@@ -15,8 +15,8 @@ import {
   Flag,
   Medal,
 } from "lucide-react";
-import { api, ApiError, Listing, Quote, money, prettyDate } from "@/lib/api";
-import { Calendar, Modal, SafeImage, amenityIcons } from "./UI";
+import { api, ApiError, Listing, Quote, money, prettyDate, today } from "@/lib/api";
+import { Calendar, Modal, SafeImage, Avatar, amenityIcons } from "./UI";
 import dynamic from "next/dynamic";
 
 const StayMap = dynamic(() => import("./StayMap"), { ssr: false, loading: () => <div className="map-unavailable">Loading map…</div> });
@@ -57,6 +57,25 @@ export default function Detail({
     [checkout, setCheckout] = useState(false),
     [busy, setBusy] = useState(false),
     [confirmation, setConfirmation] = useState<({ id: number } & Quote) | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftKey = `airbnb-stay-${user}-${id}`;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey) || "null");
+      if (saved) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(saved.start) && saved.start >= today()) {
+          setStart(saved.start);
+          setEnd(/^\d{4}-\d{2}-\d{2}$/.test(saved.end) && saved.end > saved.start ? saved.end : "");
+        }
+        if (Number.isInteger(saved.guests) && saved.guests >= 1 && saved.guests <= 16) setGuests(saved.guests);
+      }
+    } catch { /* Storage is optional. */ }
+    setDraftReady(true);
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftReady) return;
+    try { localStorage.setItem(draftKey, JSON.stringify({ start, end, guests })); } catch { /* Keep editing without storage. */ }
+  }, [draftReady, draftKey, start, end, guests]);
   const submitting = useRef(false);
   const quoteKey = `${id}/${user}/${start}/${end}/${guests}/${quoteVersion}`;
   const quote = quoted?.key === quoteKey ? quoted.value : null;
@@ -75,7 +94,7 @@ export default function Detail({
   }, [id, user]);
   useEffect(() => {
     setError("");
-    if (!start || !end) return;
+    if (!draftReady || !start || !end) return;
     let active = true;
     api<Quote>("/quote", user, "POST", {
       listing_id: id,
@@ -92,7 +111,7 @@ export default function Detail({
     return () => {
       active = false;
     };
-  }, [id, start, end, guests, user, quoteKey]);
+  }, [id, start, end, guests, user, quoteKey, draftReady]);
   useEffect(() => {
     if (gallery !== null) document.getElementById(`gallery-photo-${gallery}`)?.scrollIntoView({ block: "nearest" });
   }, [gallery]);
@@ -238,7 +257,7 @@ export default function Detail({
                 {h.bathrooms} bathrooms
               </p>
             </div>
-            <span className="avatar large">{h.host.avatar}</span>
+            <Avatar initials={h.host.avatar} name={h.host.name} large />
           </section>
           {h.superhost > 0 && (
             <div className="favourite-banner">
@@ -258,7 +277,7 @@ export default function Detail({
             </div>
           )}
           <section className="host-line">
-            <span className="avatar">{h.host.avatar}</span>
+            <Avatar initials={h.host.avatar} name={h.host.name} />
             <div>
               <strong>Hosted by {h.host.name.split(" ")[0]}</strong>
               <p>
@@ -419,7 +438,7 @@ export default function Detail({
           {h.reviews?.map((r) => (
             <article key={r.id}>
               <div className="host-line">
-                <span className="avatar">{r.avatar}</span>
+                <Avatar initials={r.avatar} name={r.name} />
                 <div>
                   <strong>{r.name}</strong>
                   <p>

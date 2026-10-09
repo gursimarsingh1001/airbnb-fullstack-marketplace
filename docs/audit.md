@@ -87,3 +87,13 @@ See [REQUIREMENTS.md](REQUIREMENTS.md) for feature-by-feature status and [README
 - Real deployed cloud upload: POST `/api/host/photos` returned 201, image proxy returned 200, and downloaded bytes matched the original 233,700-byte demo JPEG exactly. One small QA image remains in the existing free Blob store; no listing or booking was modified. Earlier unverified-upload notes are historical.
 - Checks: 70 backend tests, 8 frontend tests, lint, TypeScript and production build passed. New regressions cover sort/filter/pagination ordering and safe repeated catalogue upgrades.
 - Guest and host remain in one application using explicitly labelled demo profiles. Real password authentication is not required by the assignment and is not implemented.
+
+## 2026-10-09: refresh persistence, India dates and 240-home catalogue
+
+- Added local-storage persistence for search drafts/applied filters, per-user/per-listing stay selections and per-host unfinished listing forms. Successful bookings/listings remain server-persisted. Cancelling a host form discards its draft; browser storage is device-specific and clearing it removes drafts.
+- Aligned browser, FastAPI and SQLite validation to Asia/Kolkata calendar dates. Added a migration for existing database triggers and regression tests for the UTC/India midnight boundary. Yesterday cannot be a check-in date.
+- Added a one-time, non-destructive expansion to 240 fictional homes (280 seed reviews). It reuses illustrative gallery photos with varied covers, prices and approximate positions. Existing reservations and host edits are retained; existing catalogue removals can make totals differ from a fresh seed.
+- Added illustrative portraits for demo profiles, hosts and reviewers, with initials fallback. Added compact sticky homepage search and responsive refinements.
+- Local checks: 72 backend tests passed; 9 frontend tests passed; lint, TypeScript and production build passed.
+- Browser checks: desktop 1440x900, tablet 768x1024 and mobile 390x844 explore layouts inspected; no horizontal document overflow. Compact search stayed at the top while scrolling. Destination draft restored after refresh. Listing dates 20–23 October and 3 guests restored with a fresh server quote. 8 October disabled when India date was 9 October. Host title/description restored after refresh in a mobile form. Map showed 240 matching homes, regional grouped pins and mobile preview. No console errors captured during these local checks.
+- This is targeted verification of the changed flows, not exhaustive testing of every device or browser. Earlier audit sections describe earlier releases and their former UTC policy.

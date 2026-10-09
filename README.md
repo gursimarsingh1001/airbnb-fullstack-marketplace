@@ -13,11 +13,12 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 - Photo-first, responsive explore grid with category navigation, location/date/guest search, price/property/amenity filters, and pagination.
 - Detailed home views with five-photo galleries, amenities, host profiles, reviews, and a two-month availability calendar. Guests can review a confirmed stay after checkout.
 - Server-priced checkout, persisted reservations, atomic overlap protection, booking confirmation, Trips, and cancellation.
-- Per-profile persisted wishlists.
+- Per-profile persisted wishlists. Search/filter state, selected stay dates/guests and unfinished host forms survive refresh in browser local storage. Submitted bookings and listings persist in SQLite. Cancelling a host form discards its local draft.
+- A large homepage search bar contracts into a sticky compact bar on scroll. Demo hosts and reviewers have illustrative portraits with initials as a fallback.
 - Host dashboard, reservations, and listing creation, editing, and deletion. Photos can be supplied through HTTPS URLs or uploaded as JPEG, PNG, or WebP to the connected private Vercel Blob store (3 MB per image).
 - Four selectable demo profiles, including three hosts with independently owned homes.
 - Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, persistent dark mode, and an interactive map with price pins and home previews.
-- Seed data: 44 homes, six users, 84 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
+- Seed data: 240 homes, six users, 280 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
 
 ## Quick start
 
@@ -35,7 +36,7 @@ pip install -r backend/requirements.txt
 python -m uvicorn backend.main:app --reload --port 8001
 ```
 
-SQLite tables and sample data are created automatically on first start. Existing data is never cleared. A versioned additive catalogue upgrade adds 24 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
+SQLite tables and sample data are created automatically on first start. Existing data is never cleared. Versioned additive catalogue upgrades add 24 and then 196 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
 
 ### 2. Frontend (another terminal)
 
@@ -145,7 +146,7 @@ Foreign keys are enabled on every connection. Indexes cover listing ownership, u
 
 ### Booking invariants
 
-1. Dates must be today or later, within two years, and between 1 and 90 nights.
+1. Dates must be today or later in Asia/Kolkata (India), within two years, and between 1 and 90 nights. The browser, API and SQLite triggers use the same India calendar day, including around midnight. Stay dates remain ISO date-only strings.
 2. Guests must fit the listing capacity; a host cannot book their own home.
 3. A confirmed booking conflicts when `existing.check_in < requested.check_out AND existing.check_out > requested.check_in`. Back-to-back stays are allowed.
 4. `BEGIN IMMEDIATE` acquires the SQLite write lock **before** availability is checked. The check and insert commit together. Two simultaneous requests cannot reserve the same nights.
@@ -200,7 +201,7 @@ The API recomputes the price and checks that it still matches before inserting t
 
 ### Booking walkthrough
 
-The browser asks `POST /api/quote` for a selected listing, date range, and guest count. The FastAPI endpoint reads the current listing and confirmed reservations from SQLite, applies the UTC date-only policy, and returns the exact integer-INR price breakdown. Checkout then posts those selections, the quoted total, the selected demo user, and an idempotency key. A SQLite `BEGIN IMMEDIATE` transaction locks writers before checking the half-open reservation interval and inserting the price snapshot. SQLite constraints/triggers repeat the critical checks. Only after commit does the API return the confirmed server total; My Trips and the host dashboard read the same persisted row. On the hosted free demo the snapshot adapter reads/publishes that SQLite file in private Blob storage and detects stale writers with an ETag check.
+The browser asks `POST /api/quote` for a selected listing, date range, and guest count. The FastAPI endpoint reads the current listing and confirmed reservations from SQLite, applies the Asia/Kolkata date-only policy, and returns the exact integer-INR price breakdown. Checkout then posts those selections, the quoted total, the selected demo user, and an idempotency key. A SQLite `BEGIN IMMEDIATE` transaction locks writers before checking the half-open reservation interval and inserting the price snapshot. SQLite constraints/triggers repeat the critical checks. Only after commit does the API return the confirmed server total; My Trips and the host dashboard read the same persisted row. On the hosted free demo the snapshot adapter reads/publishes that SQLite file in private Blob storage and detects stale writers with an ETag check.
 
 Demo identity uses the `X-Demo-User` header (default `1`). Profiles: Alex/guest `1`, Ananya/host `2`, Marco/host `3`, Made/host `4`. Role and ownership checks are enforced server-side, but **identity selection is intentionally public and is not production authentication**. Do not enter private data in this demo.
 

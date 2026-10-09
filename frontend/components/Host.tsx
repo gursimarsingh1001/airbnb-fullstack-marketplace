@@ -78,6 +78,27 @@ export default function Host({
     [deleting, setDeleting] = useState<Listing | null>(null),
     [formError, setFormError] = useState("");
   const inFlight = useRef(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const draftKey = `airbnb-host-draft-${user.id}`;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey) || "null");
+      if (saved && saved.draft && typeof saved.photos === "string" &&
+          (saved.edit === null || (Number.isInteger(saved.edit) && saved.edit > 0)) &&
+          Object.keys(blank).every((key) => typeof saved.draft[key] === typeof blank[key as keyof Draft]) &&
+          Array.isArray(saved.draft.amenities) && Array.isArray(saved.draft.photos)) {
+        setDraft(saved.draft); setPhotos(saved.photos); setEdit(saved.edit);
+      }
+    } catch { /* Keep a fresh form if storage is unavailable. */ }
+    setDraftReady(true);
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      if (edit === false) localStorage.removeItem(draftKey);
+      else localStorage.setItem(draftKey, JSON.stringify({ edit, draft, photos }));
+    } catch { /* The server still saves submitted listings. */ }
+  }, [draftReady, draftKey, edit, draft, photos]);
   const uploadInFlight = useRef(false);
   const loadVersion = useRef(0);
   const load = useCallback(async (signal?: AbortSignal) => {

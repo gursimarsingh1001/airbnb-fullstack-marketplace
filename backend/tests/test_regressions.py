@@ -105,12 +105,12 @@ def test_search_validation(client, params):
 def test_combined_search_and_filtered_pagination(client):
     params = dict(q="Himachal", category="Cabins", property_type="Cabin", amenities="Wifi, Mountain view", min_price=6000, max_price=8000, guests=5, limit=1)
     pages = [client.get("/api/listings", params={**params, "page": page}).json() for page in (1, 2)]
-    assert all(page["total"] == page["pages"] == 2 for page in pages)
+    assert all(page["total"] == page["pages"] and page["total"] >= 2 for page in pages)
     assert {page["items"][0]["id"] for page in pages} == {2, 13}
     body = stay(listing=2)
     assert client.post("/api/bookings", json=body).status_code == 201
     result = client.get("/api/listings", params={**params, "check_in": body["check_in"], "check_out": body["check_out"]}).json()
-    assert result["total"] == result["pages"] == 1 and result["items"][0]["id"] == 13
+    assert result["total"] == result["pages"] == pages[0]["total"] - 1 and result["items"][0]["id"] == 13
 
 
 def test_host_edit_replaces_relationships_atomically(client):
@@ -150,13 +150,13 @@ def test_restart_initialization_preserves_all_user_data(client):
     client.put(f"/api/wishlists/{home['id']}")
     # A fresh ASGI lifespan runs the same initialization a restarted server uses.
     with TestClient(app) as restarted:
-        assert restarted.get("/api/listings").json()["total"] == 45
+        assert restarted.get("/api/listings").json()["total"] == 241
         assert home["id"] in {h["id"] for h in restarted.get("/api/wishlists").json()}
         assert booking["id"] in {b["id"] for b in restarted.get("/api/bookings").json()}
         assert restarted.post("/api/bookings", json=stay(listing=home["id"])).status_code == 409
     with database.connect() as db:
-        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
-        assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 84
+        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 3
+        assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 280
 
 
 @pytest.mark.parametrize("changes", [{"check_in": "2099-2-30"}, {"check_in": "2027-02-30"}, {"guests": 99}, {"nightly_price": -1}, {"service_fee": 0}, {"total": 1}, {"user_id": 2}])
@@ -180,9 +180,9 @@ def test_database_blocks_overlap_and_historical_mutation(client):
             db.execute("UPDATE bookings SET total=1 WHERE id=?", (booked["id"],))
 
 
-def test_date_policy_is_explicit_utc(client):
+def test_date_policy_is_explicit_india(client):
     health = client.get("/api/health").json()
-    assert health["booking_today"] == str(booking_today()) and health["date_policy"] == "UTC"
+    assert health["booking_today"] == str(booking_today()) and health["date_policy"] == "Asia/Kolkata"
     assert client.post("/api/bookings", json=stay(offset=0, nights=1)).status_code == 201
 
 

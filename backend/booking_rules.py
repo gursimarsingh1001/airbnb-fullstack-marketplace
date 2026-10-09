@@ -1,11 +1,11 @@
 """Shared date-only and integer-INR booking rules."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def booking_today():
     """One documented day boundary for every deployment, independent of host TZ."""
-    return datetime.now(timezone.utc).date()
+    return datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
 
 
 def price_quote(row, nights):

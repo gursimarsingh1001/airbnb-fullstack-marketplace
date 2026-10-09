@@ -33,6 +33,7 @@ import {
 } from "@/lib/api";
 import {
   Logo,
+  Avatar,
   Modal,
   Calendar,
   GuestPicker,
@@ -76,6 +77,7 @@ export default function Marketplace() {
     [users, setUsers] = useState<User[]>([]),
     [route, setRoute] = useState("explore"),
     [theme, setTheme] = useState<"light" | "dark">("light"),
+    [compactSearch, setCompactSearch] = useState(false),
     [menu, setMenu] = useState(false),
     [modal, setModal] = useState(""),
     [toast, setToast] = useState(""),
@@ -117,6 +119,11 @@ export default function Marketplace() {
     [busy, setBusy] = useState(false),
     [refresh, setRefresh] = useState(0),
     [mapView, setMapView] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setCompactSearch((current) => window.scrollY > (current ? 80 : 240));
+    onScroll(); window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const currentUser = useRef(user.id);
   const pendingSaves = useRef(new Set<string>());
   const cancelling = useRef(false);
@@ -140,7 +147,7 @@ export default function Marketplace() {
   useEffect(() => {
     const controller = new AbortController();
     try {
-      const stored = JSON.parse(sessionStorage.getItem(searchStorageKey) || "null");
+      const stored = JSON.parse(localStorage.getItem(searchStorageKey) || sessionStorage.getItem(searchStorageKey) || "null");
       if (stored) {
         const applied = stored.search || {};
         const datesValid = validDate(applied.start) && validDate(applied.end) && applied.start >= today() && applied.end > applied.start;
@@ -156,6 +163,12 @@ export default function Marketplace() {
             type: ["Villa", "Cabin", "Cottage", "Apartment", "Tiny home"].includes(stored.filters.type) ? stored.filters.type : "",
             amenities: Array.isArray(stored.filters.amenities) ? stored.filters.amenities.filter((a: string) => amenityNames.includes(a)) : [],
           });
+        }
+        if (stored.draft) {
+          const d = stored.draft;
+          if (typeof d.q === "string") setQ(d.q.slice(0, 100));
+          if (validDate(d.start) && d.start >= today()) { setStart(d.start); if (validDate(d.end) && d.end > d.start) setEnd(d.end); }
+          if (Number.isInteger(d.guests) && d.guests >= 1 && d.guests <= 16) setGuests(d.guests);
         }
         if (Number.isInteger(stored.page) && stored.page > 0) setPage(stored.page);
         if (["recommended", "price_low", "price_high", "rating"].includes(stored.sort)) setSort(stored.sort);
@@ -183,8 +196,8 @@ export default function Marketplace() {
   }, [notify]);
   useEffect(() => {
     if (!ready) return;
-    try { sessionStorage.setItem(searchStorageKey, JSON.stringify({ search, category, filters, page, sort })); } catch { /* Search works without browser storage. */ }
-  }, [ready, search, category, filters, page, sort]);
+    try { localStorage.setItem(searchStorageKey, JSON.stringify({ search, category, filters, page, sort, draft: { q, start, end, guests } })); } catch { /* Search works without browser storage. */ }
+  }, [ready, search, category, filters, page, sort, q, start, end, guests]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 4200);
@@ -413,7 +426,7 @@ export default function Marketplace() {
   return (
     <>
       <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); const main = document.getElementById("main-content"); main?.focus(); main?.scrollIntoView(); }}>Skip to main content</a>
-      <header className={`site-header ${isExplore ? "expanded" : ""}`}>
+      <header className={`site-header ${isExplore ? "expanded" : ""} ${isExplore && compactSearch ? "compact-search" : ""}`}>
         <div className="topbar">
           <button
             className="brand-button"
@@ -481,7 +494,7 @@ export default function Marketplace() {
               >
                 <Menu size={18} />
                 <span className="profile-avatar">
-                  <span aria-hidden="true">{user.avatar}</span>
+                  <Avatar initials={user.avatar} name={user.name} />
                 </span>
               </button>
               {menu && (
@@ -494,7 +507,7 @@ export default function Marketplace() {
                   />
                   <div className="account-menu">
                     <div className="menu-profile">
-                      <span className="avatar">{user.avatar}</span>
+                      <Avatar initials={user.avatar} name={user.name} />
                       <div>
                         <strong>{user.name}</strong>
                         <small>Demo {user.role} profile</small>
@@ -745,7 +758,7 @@ export default function Marketplace() {
                       >
                         <ArrowLeft size={17} />
                       </button>
-                      {Array.from({ length: pages }, (_, i) => (
+                      {Array.from({ length: pages }, (_, i) => i).filter((i) => i === 0 || i === pages - 1 || Math.abs(i + 1 - page) <= 1).map((i) => (
                         <button
                           key={i}
                           className={`circle-button ${page === i + 1 ? "active" : ""}`}
@@ -1215,7 +1228,7 @@ export default function Marketplace() {
                       )
                     }
                   >
-                    <span className="avatar">{u.avatar}</span>
+                    <Avatar initials={u.avatar} name={u.name} />
                     <span>
                       <strong>{u.name}</strong>
                       <small>

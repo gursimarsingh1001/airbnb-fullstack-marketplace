@@ -64,8 +64,8 @@ export type Quote = {
 export const money = (n: number) => "₹" + n.toLocaleString("en-IN");
 export const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-// Booking policy uses the current UTC date; stay dates themselves have no timezone.
-export const today = () => new Date().toISOString().slice(0, 10);
+// The demo uses India calendar days consistently with the API and SQLite.
+export const today = () => new Date(Date.now() + 330 * 60 * 1000).toISOString().slice(0, 10);
 export const prettyDate = (s: string) =>
   s
     ? new Date(s + "T12:00:00").toLocaleDateString("en-GB", {

@@ -1,11 +1,11 @@
 from test_api import client  # noqa: F401
 from backend import database
-from backend.catalogue import expand_catalogue
+from backend.catalogue import expand_catalogue, expand_large_catalogue
 
 
 def test_sort_is_applied_before_pagination_and_filters(client):
     low = client.get('/api/listings?sort=price_low&limit=50').json()['items']
-    assert len(low) == 44
+    assert len(low) == 50
     assert [h['price'] for h in low] == sorted(h['price'] for h in low)
     page = client.get('/api/listings?sort=price_low&limit=5&page=2').json()['items']
     assert [h['id'] for h in page] == [h['id'] for h in low[5:10]]
@@ -23,10 +23,38 @@ def test_catalogue_expansion_is_idempotent_and_preserves_edits(client):
         db.execute('UPDATE listings SET deleted=1 WHERE id=22')
         bookings = [tuple(row) for row in db.execute('SELECT * FROM bookings ORDER BY id')]
         expand_catalogue(db)
-        expand_catalogue(db)
-        assert db.execute('SELECT COUNT(*) FROM listings').fetchone()[0] == 44
+        expand_large_catalogue(db)
+        expand_large_catalogue(db)
+        assert db.execute('SELECT COUNT(*) FROM listings').fetchone()[0] == 240
         assert db.execute('SELECT title FROM listings WHERE id=21').fetchone()[0] == 'An edited demo home'
         assert db.execute('SELECT deleted FROM listings WHERE id=22').fetchone()[0] == 1
         assert [tuple(row) for row in db.execute('SELECT * FROM bookings ORDER BY id')] == bookings
     homes = client.get('/api/listings?limit=50').json()['items']
     assert all(h['photos'] and h['amenities'] and h['latitude'] and h['longitude'] for h in homes)
+
+
+def test_all_map_pages_cover_catalogue(client):
+    ids = []
+    for page in range(1, 6):
+        result = client.get(f'/api/listings?limit=50&page={page}').json()
+        assert result['total'] == 240 and result['pages'] == 5
+        ids.extend(item['id'] for item in result['items'])
+    assert len(ids) == len(set(ids)) == 240
+
+
+def test_yesterday_rejected_at_india_midnight(client, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    from backend import booking_rules
+    from backend.main import validate_dates
+    from fastapi import HTTPException
+    import pytest
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 8, 19, tzinfo=timezone.utc).astimezone(tz)
+    monkeypatch.setattr(booking_rules, 'datetime', FrozenDateTime)
+    assert str(booking_rules.booking_today()) == '2026-10-09'
+    yesterday = booking_rules.booking_today() - timedelta(days=1)
+    with pytest.raises(HTTPException) as error:
+        validate_dates(yesterday, yesterday + timedelta(days=2))
+    assert error.value.status_code == 422

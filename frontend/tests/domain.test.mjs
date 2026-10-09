@@ -36,7 +36,7 @@ test("date-only formatting does not parse stay dates as UTC timestamps", () => {
   assert.equal(dateKey(new Date(2027, 0, 2)), "2027-01-02");
   assert.equal(prettyDate("2027-01-02"), "2 Jan");
   assert.equal(prettyDate(""), "Add dates");
-  assert.equal(today(), new Date().toISOString().slice(0, 10));
+  assert.equal(today(), new Date(Date.now() + 330 * 60 * 1000).toISOString().slice(0, 10));
   assert.equal(money(19368), "₹19,368");
 });
 test("API carries selected identity, request payload and retry key", async () => {
@@ -65,4 +65,15 @@ test("API reports offline and non-JSON failures without raw parser exceptions", 
 test("API preserves cancellation so stale requests can be discarded", async () => {
   globalThis.fetch = async () => { throw new DOMException("Aborted", "AbortError"); };
   await assert.rejects(api("/listings", 1), { name: "AbortError" });
+});
+
+
+test("India date boundary rejects yesterday after local midnight", () => {
+  const originalNow = Date.now;
+  try {
+    Date.now = () => Date.parse("2026-10-08T19:00:00Z");
+    assert.equal(today(), "2026-10-09");
+    assert.equal(canChooseDate("2026-10-08", "", "", [], today()), false);
+    assert.equal(canChooseDate("2026-10-09", "", "", [], today()), true);
+  } finally { Date.now = originalNow; }
 });
