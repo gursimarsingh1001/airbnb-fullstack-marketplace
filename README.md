@@ -19,6 +19,9 @@ An original full-stack Airbnb-inspired assignment implementation, built with **N
 - Four selectable demo profiles, including three hosts with independently owned homes.
 - Toasts, loading and empty states, keyboard-accessible dialogs, mobile navigation, persistent dark mode, and an interactive map with price pins and home previews.
 - Seed data: 272 homes, six users, 312 reviews, four upcoming bookings, one completed demo stay for trying the review flow, and a saved home.
+- Experiences and Services are complete database-backed sections: 20 offerings each, reviews, future time slots, location/date/category/price/rating filters, galleries, favorites, server-priced mock checkout, and provider CRUD.
+- Trips has Upcoming, Past, and Cancelled tabs for all three reservation types. Providers manage their own experiences/services and see the same reservations guests see.
+- Home filters also include bedrooms, beds, bathrooms, minimum/maximum rating, and Superhost status.
 
 ## Quick start
 
@@ -37,6 +40,8 @@ python -m uvicorn backend.main:app --reload --port 8001
 ```
 
 SQLite tables and sample data are created automatically on first start. Existing data is never cleared. Versioned additive catalogue upgrades add 24, 196 and 32 homes once, preserving user edits, deletions and bookings. The default file is `backend/airbnb.db`.
+
+Migration 4 adds Experiences/Services without changing existing home records. Their seed creates 20 of each, two reviews per offering, two sample reservations, and a rolling 60-day availability horizon. Restarting extends the horizon; it does not recreate provider-removed slots or duplicate offerings. To run initialization explicitly: `python -c "from backend.database import initialize; initialize()"`. Do not delete the database to apply upgrades.
 
 ### 2. Frontend (another terminal)
 
@@ -103,16 +108,22 @@ frontend/
     Detail.tsx          Gallery, availability, quote, checkout, confirmation
     Host.tsx            Host dashboard and listing CRUD forms
     UI.tsx              Cards, modal/focus trap, calendar, guest picker
+    activities/         Shared browse, detail, booking, trips and provider components
   lib/api.ts            Typed API client, domain types, money/date helpers
+  lib/activities.ts     Typed experience/service API contracts and categories
 backend/
   main.py               FastAPI routes, validation, pricing, authorization
   database.py           SQLite connection, schema, indexes, initialization
   blob_database.py      Private durable snapshots and optimistic concurrency
   seed.py               Original fictional demo dataset
+  dependencies.py       Shared database connection and demo identity dependencies
+  activities.py         Experience/service router, input schemas and booking rules
+  activity_schema.py    Additive migration 4, constraints, indexes and triggers
+  activity_seed.py      Offerings, reviews and rolling availability seed
   tests/test_api.py     Integration and concurrent booking tests
 ```
 
-The Next.js App Router builds a static frontend shell. Client-side hash routes (`#explore`, `#listing/4`, `#trips`, `#wishlists`, `#host`) preserve browser back/forward and shareable home URLs while allowing a single FastAPI deployment. The browser talks directly to the Python API; **all business data resides in SQLite**. Local storage contains the selected demo profile ID and theme; session storage retains search, filters, sort and pagination.
+The Next.js App Router builds a static frontend shell. Client-side hash routes (`#explore`, `#listing/4`, `#trips`, `#wishlists`, `#host`) preserve browser back/forward and shareable home URLs. Experiences and Services use `/experiences`, `/services`, and `/{kind}/{id}` paths; Next development rewrites and production fallback routes support direct navigation/refresh. The browser talks directly to the Python API; **all business data resides in SQLite**. Local storage keeps the demo profile, theme and home/activity searches; activity filter drafts use session storage. Bookings and favorites are never stored only in the browser.
 
 ## Database schema
 
@@ -129,6 +140,16 @@ erDiagram
     listings ||--o{ wishlists : saved_in
     listings ||--o{ listing_amenities : offers
     amenities ||--o{ listing_amenities : describes
+    users ||--o{ activities : provides
+    activities ||--o{ activity_photos : displays
+    activities ||--o{ activity_slots : schedules
+    activities ||--o{ activity_reviews : receives
+    users ||--o{ activity_reviews : writes
+    activity_slots ||--o{ activity_bookings : reserves
+    activities ||--o{ activity_bookings : receives
+    users ||--o{ activity_bookings : books
+    users ||--o{ activity_favorites : saves
+    activities ||--o{ activity_favorites : saved_in
 ```
 
 | Table | Important fields and constraints |
@@ -141,6 +162,12 @@ erDiagram
 | `bookings` | Listing/user FKs, ISO dates, guests, **price snapshot**, fees, total, status; check-out after check-in |
 | `reviews` | Listing/user FKs, optional unique completed-booking FK for guest reviews, rating constrained to 1–5, comment, date |
 | `wishlists` | Composite primary key `(user_id, listing_id)` |
+| `activities` | Discriminator `kind` (experiences/services), provider FK, content/category/location, duration, capacity, integer INR price, person/group pricing, language, setting, soft deletion |
+| `activity_photos` | Offering FK, HTTPS URL, unique offering/position |
+| `activity_slots` | Offering FK, ISO day, start time, capacity, active flag; unique offering/day/time |
+| `activity_bookings` | Offering/slot/guest/provider FKs, date/time interval, people, immutable quoted price snapshot, status, unique guest/idempotency key |
+| `activity_reviews` | Offering/user FKs, rating 1–5, comment; demo reviews aggregated on read |
+| `activity_favorites` | Composite primary key `(user_id, activity_id)` prevents duplicates |
 
 Foreign keys are enabled on every connection. Indexes cover listing ownership, user bookings, and availability lookups. Local WAL mode and a 15-second busy timeout support concurrent readers and serialized writes. The cloud snapshot adapter uses DELETE journal mode so the uploaded file contains the entire committed state; ETag checks serialize publication across instances.
 
@@ -176,7 +203,31 @@ Interactive OpenAPI reference is available at `/docs` and schema at `/openapi.js
 | POST | `/api/host/photos` | Upload a validated image to the connected private Blob store (host profile required) |
 | GET | `/api/photos/{key}` | Serve an uploaded image through the API without exposing the Blob token |
 
-Search parameters: `q`, `category`, `property_type`, `min_price`, `max_price`, `guests`, `amenities` (comma separated), `check_in`, `check_out`, `page`, `limit`, `sort` (`recommended`, `price_low`, `price_high`, `rating`).
+Search parameters: `q`, `category`, `property_type`, `min_price`, `max_price`, `guests`, `amenities` (comma separated), `check_in`, `check_out`, `bedrooms`, `beds`, `bathrooms`, `min_rating`, `max_rating`, `superhost`, `page`, `limit`, `sort` (`recommended`, `price_low`, `price_high`, `rating`).
+
+### Experiences and Services API
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/api/activities?kind=experiences` | Search/pagination; use `kind=services` for services |
+| GET | `/api/activities/{id}` | Content, gallery, aggregated reviews and remaining seats for every future slot |
+| POST | `/api/activities/quote` | Current server price and availability for `{slot_id, people}` |
+| POST | `/api/activities/bookings` | Atomic confirmation; `{slot_id, people, expected_total}` plus `Idempotency-Key` |
+| GET | `/api/activities/bookings` | Current user's experience and service reservations |
+| DELETE | `/api/activities/bookings/{id}` | Cancel an owned, not-yet-started reservation |
+| GET | `/api/activities/favorites` | Current user's saved offerings |
+| PUT / DELETE | `/api/activities/favorites/{id}` | Save/remove without duplicates |
+| GET | `/api/activities/host/dashboard` | Provider-owned offerings and reservations |
+| POST | `/api/activities/host` | Publish offering, photos and availability atomically |
+| PUT / DELETE | `/api/activities/host/{id}` | Owner-only edit or soft removal |
+
+Activity filters: `q`, `category`, `day`, `people`, `min_price`, `max_price`, `min_rating`, `duration` (maximum minutes), `language`, `setting`, `service_location`, `time_of_day`, `sort`, `page`, `limit`. All filters combine before pagination. A date/time search checks remaining capacity and provider conflicts.
+
+Example quote: `POST /api/activities/quote` with `{"slot_id":1,"people":2}` (choose a current slot from the detail response). For a ₹1,800/person experience the server returns `unit_price:1800`, `subtotal:3600`, `service_fee:360`, `total:3960`, and the scheduled day/start/end. Confirm using the same selection, `expected_total:3960`, `X-Demo-User:1`, and a fresh `Idempotency-Key` such as `demo-booking-001`. Retry the identical request/key after a network interruption; change the key for a new reservation.
+
+Experiences share seats within the same session. Services reserve the provider exclusively for the interval, even when priced per person. The same provider cannot run a different offering at an overlapping time. Intervals are start-inclusive/end-exclusive, so adjacent appointments work. All demo appointments use **IST**, including international offerings, and must start in the future. Availability is published at most two years ahead; sessions cannot cross midnight. A `BEGIN IMMEDIATE` transaction plus SQLite triggers enforces capacity/provider-time checks. Quotes use integer INR and a rounded 10% fee. Historical prices never change after a provider edits the offering. Soft removal is blocked until upcoming/ongoing reservations finish or are cancelled.
+
+Provider request examples and an interview walkthrough are in [the three-section implementation report](docs/marketplace-expansion.md).
 
 Quote request (`POST /api/quote`):
 
@@ -223,7 +274,8 @@ Manual browser checks include date selection, checkout, persisted trips, host fo
 
 ## Assumptions and limits
 
-- Real payments, messaging, identity verification, experiences, and services are clearly marked demos or coming-soon surfaces.
+- Real payments, messaging, and identity verification are mocked. Homes, Experiences, and Services have real SQLite-backed workflows, but all inventory and reservations are fictional.
+- Experience/service reviews are seeded and read-only; guest review submission is implemented for completed home stays. Activity photos accept HTTPS URLs; cloud upload remains available in the home editor. International activity times deliberately use IST, not each destination's local timezone.
 - No card details are collected. Cancellation is a full mock refund before check-in.
 - Seed photos use public Unsplash URLs and require network access. Host uploads accept JPEG, PNG, and WebP files up to 3 MB and use the existing private Vercel Blob store; the API serves uploaded files through a same-origin proxy without exposing storage credentials. Local upload needs `BLOB_READ_WRITE_TOKEN` in the backend process; HTTPS URL entry remains available without it. Vercel Hobby Blob quotas are shared with the database snapshot, so this demo deliberately keeps uploads small. Tests use a mocked Blob HTTP client; a real 233,700-byte JPEG upload and byte-for-byte retrieval also passed against the deployed API on 9 October 2026. Free quota still applies.
 - Maps use Leaflet and OpenStreetMap tiles, with approximate seeded town coordinates. Explore shows all matching results across pagination, groups nearby price pins, supports country selection, and opens a photo preview before navigating to a home. Detail pages show the surrounding area. Host-created homes without coordinates show their location text instead of an invented pin. Tile loading needs internet access; the listing list remains usable if it fails. No API key, account, paid plan, or user geolocation is needed. Visible attribution is retained and tiles use normal browser caching; see the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).

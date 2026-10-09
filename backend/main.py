@@ -13,7 +13,7 @@ import re
 from fastapi import FastAPI, Depends, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from . import database
 from .blob_database import BlobStore, IMAGE_TYPES, MAX_IMAGE_BYTES, SnapshotConflict, SnapshotUnavailable
@@ -47,30 +47,9 @@ async def snapshot_unavailable_handler(request, exc):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
-def get_db():
-    db = database.connect()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-DB = Annotated[sqlite3.Connection, Depends(get_db)]
-
-
-def current_user(db: DB, x_demo_user: Annotated[int, Header()] = 1):
-    user = db.execute("SELECT * FROM users WHERE id=?", (x_demo_user,)).fetchone()
-    if not user:
-        raise HTTPException(401, "Choose a valid demo profile.")
-    return dict(user)
-
-
-User = Annotated[dict, Depends(current_user)]
-
-
-def require_host(user):
-    if user["role"] != "host":
-        raise HTTPException(403, "Switch to a host profile to manage listings.")
+from .dependencies import DB, User, get_db, current_user, require_host
+from .activities import router as activities_router
+app.include_router(activities_router)
 
 
 def listing_row(db, id, include_deleted=False):
@@ -152,6 +131,12 @@ def listings(
     max_price: int = Query(1000000, ge=0, le=1000000),
     guests: int = Query(1, ge=1, le=16),
     amenities: str = "",
+    bedrooms: int = Query(0, ge=0, le=20),
+    beds: int = Query(0, ge=0, le=30),
+    bathrooms: int = Query(0, ge=0, le=20),
+    min_rating: float = Query(0, ge=0, le=5),
+    max_rating: float = Query(5, ge=0, le=5),
+    superhost: bool = False,
     check_in: date | None = None,
     check_out: date | None = None,
     page: int = Query(1, ge=1),
@@ -160,9 +145,18 @@ def listings(
 ):
     if min_price > max_price:
         raise HTTPException(422, "Minimum price cannot exceed maximum price.")
+    if min_rating > max_rating:
+        raise HTTPException(422, "Minimum rating cannot exceed maximum rating.")
     q = q.strip()
     clauses = ["deleted=0", "price>=?", "price<=?", "max_guests>=?"]
     args = [min_price, max_price, guests]
+    for column, value in [('bedrooms', bedrooms), ('beds', beds), ('bathrooms', bathrooms)]:
+        clauses.append(column + '>=?'); args.append(value)
+    if min_rating or max_rating < 5:
+        clauses.append('(SELECT COALESCE(AVG(rating),0) FROM reviews WHERE listing_id=listings.id) BETWEEN ? AND ?')
+        args += [min_rating, max_rating]
+    if superhost:
+        clauses.append('superhost=1')
     if q:
         clauses += ["(location LIKE ? OR country LIKE ? OR title LIKE ?)"]
         args += [f"%{q}%"] * 3
@@ -575,5 +569,12 @@ def dashboard(db: DB, user: User):
 
 # Production serves the Next.js static export and API from the same origin.
 static_dir = Path(__file__).parent.parent / "frontend" / "out"
+@app.get("/experiences", include_in_schema=False)
+@app.get("/experiences/{aid}", include_in_schema=False)
+@app.get("/services", include_in_schema=False)
+@app.get("/services/{aid}", include_in_schema=False)
+def activity_shell(aid: str = ""):
+    return FileResponse(static_dir / "index.html")
+
 if static_dir.exists():
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")

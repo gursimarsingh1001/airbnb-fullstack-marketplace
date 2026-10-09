@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS wishlists (
 def initialize():
     from .blob_database import SnapshotConflict
     from .migrations import migrate
+    from .activity_schema import migrate_activities
+    from .activity_seed import seed_activities
     from .seed import seed
     from .catalogue import expand_catalogue, expand_large_catalogue, expand_regional_catalogue
 
@@ -86,6 +88,8 @@ def initialize():
             expand_catalogue(db)
             expand_large_catalogue(db)
             expand_regional_catalogue(db)
+            migrate_activities(db)
+            seed_activities(db)
             db.commit()
             return
         except SnapshotConflict:

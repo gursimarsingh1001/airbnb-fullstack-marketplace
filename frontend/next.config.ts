@@ -1,7 +1,18 @@
 import type { NextConfig } from "next";
-const config: NextConfig = {
-  output: "export",
-  images: { unoptimized: true },
-  trailingSlash: true,
-};
-export default config;
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
+export default function config(phase: string): NextConfig {
+  return {
+    ...(phase === PHASE_DEVELOPMENT_SERVER
+      ? {
+          async rewrites() {
+            return [
+              { source: "/experiences/:id", destination: "/experiences" },
+              { source: "/services/:id", destination: "/services" },
+            ];
+          },
+        }
+      : { output: "export" }),
+    images: { unoptimized: true },
+    trailingSlash: true,
+  };
+}

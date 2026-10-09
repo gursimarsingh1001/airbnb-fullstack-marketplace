@@ -155,7 +155,7 @@ def test_restart_initialization_preserves_all_user_data(client):
         assert booking["id"] in {b["id"] for b in restarted.get("/api/bookings").json()}
         assert restarted.post("/api/bookings", json=stay(listing=home["id"])).status_code == 409
     with database.connect() as db:
-        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 3
+        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 4
         assert db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0] == 312
 
 
