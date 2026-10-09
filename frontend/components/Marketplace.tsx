@@ -121,9 +121,24 @@ export default function Marketplace() {
     [refresh, setRefresh] = useState(0),
     [mapView, setMapView] = useState(false);
   useEffect(() => {
-    const onScroll = () => setCompactSearch((current) => window.scrollY > (current ? 80 : 240));
-    onScroll(); window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      setCompactSearch((current) => {
+        if (window.innerWidth <= 640 || window.scrollY < 40) return false;
+        if (window.scrollY > 70) return true;
+        return current;
+      });
+    };
+    const onScroll = () => { if (!frame) frame = window.requestAnimationFrame(update); };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      window.cancelAnimationFrame(frame);
+    };
   }, []);
   const currentUser = useRef(user.id);
   const pendingSaves = useRef(new Set<string>());
@@ -439,7 +454,7 @@ export default function Marketplace() {
           >
             <Logo />
           </button>
-          <nav className="primary-nav" aria-label="Main navigation">
+          <nav className="primary-nav" aria-label="Main navigation" inert={isExplore && compactSearch}>
             <button
               className={isExplore && view === "homes" ? "active" : ""}
               onClick={() => {
@@ -573,7 +588,7 @@ export default function Marketplace() {
                 <strong>Where</strong>
                 <input
                   aria-label="Search destinations"
-                  placeholder="Search destinations"
+                  placeholder={compactSearch ? "Anywhere" : "Search destinations"}
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                 />
@@ -581,18 +596,20 @@ export default function Marketplace() {
               <span className="search-divider" />
               <button
                 type="button"
-                className="search-segment"
+                className="search-segment checkin-segment"
                 onClick={() => setModal("dates")}
               >
                 <strong>Check in</strong>
                 <span className={start ? "has-value" : ""}>
-                  {prettyDate(start)}
+                  {compactSearch ? (start ? prettyDate(start) + (end ? " – " + prettyDate(end) : "") : "Anytime") : prettyDate(start)}
                 </span>
               </button>
-              <span className="search-divider" />
+              <span className="search-divider checkout-divider" />
               <button
                 type="button"
-                className="search-segment"
+                className="search-segment checkout-segment"
+                tabIndex={compactSearch ? -1 : undefined}
+                aria-hidden={compactSearch}
                 onClick={() => setModal("dates")}
               >
                 <strong>Check out</strong>
